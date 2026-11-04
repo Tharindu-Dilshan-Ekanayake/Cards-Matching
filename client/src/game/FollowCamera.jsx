@@ -35,21 +35,20 @@ const LOOK_SMOOTHING = 8
 const TABLE_SMOOTHING = 3
 
 /**
- * Seated view: over your shoulder, looking across the timer at your opponent, a
- * little to your right so your own head doesn't hide the display.
+ * Seated view: high above your end of the table, looking down over the cards at your
+ * opponent: the whole board in view, nearly top-down, so every card is easy to tap.
  */
-const DUEL_CAM_BACK = 2
-const DUEL_CAM_HEIGHT = 2.75
-const DUEL_CAM_SIDE = 0.6
-/** Where the view aims: just past the timer, in the table's frame (towards the opponent). */
-const DUEL_LOOK_PAST = 0.45
-const DUEL_LOOK_HEIGHT = TABLE.height + 0.38
+const DUEL_CAM_BACK = 1.35
+const DUEL_CAM_HEIGHT = TABLE.height + 2.6
+/** Where the view aims: the board's middle, a touch towards the opponent. */
+const DUEL_LOOK_PAST = 0.05
+const DUEL_LOOK_HEIGHT = TABLE.height
 /** After a win: from the opponent's end, looking at you dancing on the table. */
 const WIN_CAM_BACK = 2.9
 const WIN_CAM_HEIGHT = 2.5
 const WIN_LOOK_HEIGHT = 1.8
 /** Extra distance back on portrait screens. */
-const PORTRAIT_BACK = 0.9
+const PORTRAIT_BACK = 0.35
 
 const _desired = new Vector3()
 const _target = new Vector3()
@@ -58,8 +57,8 @@ const _target = new Vector3()
  * Third-person orbit camera that trails the local player.
  * Right-drag (mouse) or one-finger drag (touch) orbits; the wheel zooms.
  *
- * While the player is seated at a table it swings round behind their shoulder, the
- * duel view, and orbiting is disabled.
+ * While the player is seated at a table it rises over their end of the table and looks
+ * down at the cards, the duel view, and orbiting is disabled.
  */
 export function FollowCamera() {
   const camera = useThree((s) => s.camera)
@@ -150,7 +149,7 @@ export function FollowCamera() {
 
     if (table) {
       // A winner dancing up on the table: swing round to their front once the dance
-      // starts. A portrait screen is narrow: step back so the timer and the opponent fit.
+      // starts. A portrait screen is narrow: step back so the whole board fits.
       const won = match.won && Date.now() >= (actionFx.get(SELF_ANCHOR)?.danceAt || 0)
       const portrait = size.height > size.width ? PORTRAIT_BACK : 0
       const side = seatSide(match.seat)
@@ -160,9 +159,9 @@ export function FollowCamera() {
         _desired.set(cx, WIN_CAM_HEIGHT, cz)
         _target.set(lx, WIN_LOOK_HEIGHT, lz)
       } else {
-        const [cx, cz] = tableLocal(table, side * DUEL_CAM_SIDE, side * (TABLE.seatZ + DUEL_CAM_BACK + portrait))
+        const [cx, cz] = tableLocal(table, 0, side * (DUEL_CAM_BACK + portrait))
         const [lx, lz] = tableLocal(table, 0, -side * DUEL_LOOK_PAST)
-        _desired.set(cx, DUEL_CAM_HEIGHT + portrait * 0.5, cz)
+        _desired.set(cx, DUEL_CAM_HEIGHT + portrait, cz)
         _target.set(lx, DUEL_LOOK_HEIGHT, lz)
       }
       const k = 1 - Math.pow(0.001, delta * (TABLE_SMOOTHING / 10) * 3)

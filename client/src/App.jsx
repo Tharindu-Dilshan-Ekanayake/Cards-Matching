@@ -4,6 +4,7 @@ import { platform, setAdScreen, usePlatform } from './bloxity/platform'
 import { isPlayingPhase, useGame } from './net/gameStore'
 import { renderStats } from './net/liveState'
 import { useConnection } from './net/useConnection'
+import AfkNotice from './ui/AfkNotice'
 import HUD from './ui/HUD'
 import InteractPrompt from './ui/InteractPrompt'
 import LoadingScreen from './ui/LoadingScreen'
@@ -71,7 +72,7 @@ function App() {
   const onReady = useCallback(() => setReady(true), [])
 
   return (
-    <div className="relative h-dvh w-screen select-none overflow-hidden bg-[#ffc29a] font-game">
+    <div className="relative h-dvh w-screen select-none overflow-hidden bg-[#ffd9c7] font-game">
       <Suspense fallback={null}>
         <GameScene onReady={onReady} />
       </Suspense>
@@ -80,6 +81,7 @@ function App() {
       <MatchUI />
       <InteractPrompt />
       <Toasts />
+      <AfkNotice />
       {touch && <TouchControls />}
       {showFps && <FpsReadout />}
       {modal && (

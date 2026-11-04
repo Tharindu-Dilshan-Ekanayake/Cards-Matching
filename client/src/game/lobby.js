@@ -2,9 +2,9 @@ import { BufferAttribute, BufferGeometry, Color } from 'three'
 
 import {
   DATA,
+  DICE,
   FLOOR,
   GUIDE_BOARD,
-  HOURGLASS,
   LAMPS,
   PLANTERS,
   PLAZA,
@@ -15,12 +15,13 @@ import {
   TABLE,
   TOWER,
 } from './layout'
+import { SUITS } from './sceneStyle'
 
 /**
- * The town square's build: the paving (one mesh) and every box-built prop (lamp
- * posts, string lights, crystal planters, the clock tower's body, the giant
- * hourglass, the Store and the guide board's frame), which join the world's shared
- * scenery instanced mesh: no draw calls of their own.
+ * The square's build: the paving (one mesh) and every box-built prop (lamp posts,
+ * string lights, crystal planters, the house of cards' plinth, the giant dice, the
+ * Store and the guide board's frame), which join the world's shared scenery
+ * instanced mesh: no draw calls of their own.
  */
 
 /** Polar -> [x, z] about (cx, cz), angles measured from +Z (south) towards +X (east). */
@@ -29,29 +30,55 @@ const polar = (cx, cz, r, a) => [cx + r * Math.sin(a), cz + r * Math.cos(a)]
 /* ---- Paving ---------------------------------------------------------------------- */
 
 const PAVE = {
-  tileA: '#fbf1dc',
-  tileB: '#ead8b5',
-  trim: '#9c6b43',
+  /** The harlequin: rose diamonds on cream, like the back of a deck. */
+  field: '#fff1de',
+  diamond: '#f0687e',
+  trim: '#e5a52f',
   towerRing: '#ffcf4a',
-  avenue: '#d6ecff',
-  path: '#fff3dc',
-  band: '#ec7a5c',
-  showroomPad: '#ffe1f0',
+  towerFelt: '#1d7f73',
+  towerPip: '#ffcf4a',
+  /** Card-table felt under the two avenues of tables. */
+  avenue: '#1f8576',
+  avenueEdge: '#ffcf4a',
+  path: '#fff7ea',
+  band: SUITS.ruby,
+  showroomPad: '#ffe1ec',
   storePad: '#efe2ff',
-  boardPad: '#dff7e4',
-  walk: '#fff3dc',
+  boardPad: '#dcf5ec',
+  walk: '#fff7ea',
 }
 
 /**
- * The square's floor as one flat geometry: a big checker of warm stone tiles with a
- * trim round it, a gold ring round the clock tower, pale blue avenues under the two
- * rows of tables, the entrance path and paved pads (and the spokes joining them)
- * under the showroom, the Store and the leaderboards. Colours are vertex colours over
- * one shared tile texture (UVs in world units / `tile`).
+ * The square's floor as one flat geometry: a harlequin of rose diamonds on cream with
+ * a gold trim round it, a felt disc ringed in gold under the house of cards, deep
+ * teal felt avenues (edged in gold) under the two rows of tables, the entrance path
+ * and paved pads (and the spokes joining them) under the showroom, the Store and the
+ * leaderboards. Colours are vertex colours over one shared tile texture (UVs in
+ * world units / `tile`).
  *
- * Pieces that overlap are stacked in layers (the field, then pads, then paths), each
- * FLOOR.plazaStep higher, so overlapping tiles never flicker against each other.
+ * Pieces that overlap are stacked in layers (the field, the diamonds, the felt,
+ * then paths), each FLOOR.plazaStep higher, so overlapping tiles never flicker
+ * against each other.
  */
+/**
+ * Tables that share an x line form an avenue (one long felt strip); a table on its
+ * own (the centre-stage table behind the house of cards) gets its own felt pad.
+ */
+const AVENUE_XS = [...new Set(DATA.tables.map((t) => t.x))].filter(
+  (x) => DATA.tables.filter((t) => t.x === x).length > 1,
+)
+const SOLO_TABLES = DATA.tables.filter((t) => !AVENUE_XS.includes(t.x))
+/** Felt round a table: across its width, and along its seats (chairs included). */
+const FELT_W = TABLE.width + 2.2
+const FELT_D = TABLE.depth + TABLE.seatZ * 2 + 2.2
+
+function avenueSpan(x) {
+  const zs = DATA.tables.filter((t) => t.x === x).map((t) => t.z)
+  const top = Math.min(...zs) - 2.2
+  const bottom = Math.max(...zs) + 2.2
+  return { z: (top + bottom) / 2, len: bottom - top }
+}
+
 export function createPlazaGeometry(tile) {
   const positions = []
   const colors = []
@@ -84,6 +111,11 @@ export function createPlazaGeometry(tile) {
       else tri([cx, cz], polar(cx, cz, r1, t0), polar(cx, cz, r1, t1))
     }
   }
+  /** A rhombus (a card-suit diamond) with half-diagonals `a` (X) and `b` (Z). */
+  const diamond = (x, z, a, b, hex) => {
+    color.set(hex)
+    quad([x, z - b], [x + a, z], [x, z + b], [x - a, z])
+  }
   const rect = (x, z, w, d, hex, ry = 0) => {
     color.set(hex)
     const corner = (sx, sz) => {
@@ -94,44 +126,61 @@ export function createPlazaGeometry(tile) {
   }
 
   const { x0, x1, z0, z1 } = PLAZA
-  // Layer 0: the field, a checker of 8 x 9 big tiles, and the trim round it.
+  // Layer 0: the cream field, its gold trim, and the pads outside it: the showroom's
+  // half-disc (east), the Store (west) and the leaderboards' strip (north).
   layer(0)
-  const cols = 8
-  const rows = 9
-  const tw = (x1 - x0) / cols
-  const td = (z1 - z0) / rows
-  for (let c = 0; c < cols; c += 1) {
-    for (let r = 0; r < rows; r += 1) {
-      rect(x0 + tw * (c + 0.5), z0 + td * (r + 0.5), tw, td, (c + r) % 2 ? PAVE.tileA : PAVE.tileB)
-    }
-  }
+  rect((x0 + x1) / 2, (z0 + z1) / 2, x1 - x0, z1 - z0, PAVE.field)
   const trim = 0.6
   rect((x0 + x1) / 2, z0 - trim / 2, x1 - x0 + trim * 2, trim, PAVE.trim)
   rect((x0 + x1) / 2, z1 + trim / 2, x1 - x0 + trim * 2, trim, PAVE.trim)
   rect(x0 - trim / 2, (z0 + z1) / 2, trim, z1 - z0, PAVE.trim)
   rect(x1 + trim / 2, (z0 + z1) / 2, trim, z1 - z0, PAVE.trim)
-  // Pads outside the field: the showroom's half-disc (east), the Store (west) and the
-  // leaderboards' strip (north).
   arc(SHOWROOM.x, SHOWROOM.z, 0, SHOWROOM.radius + 2.2, 0, Math.PI, 30, PAVE.showroomPad)
   rect(STORE.x + 0.5, STORE.z, 7.4, 10.4, PAVE.storePad)
   // Narrow enough that its corners stay on the round island.
   rect(0, -22.5, 34, 3.8, PAVE.boardPad)
   rect(GUIDE_BOARD.x, GUIDE_BOARD.z, 6.6, 2.6, PAVE.walk, GUIDE_BOARD.ry)
-  rect(HOURGLASS.x, HOURGLASS.z, 3.6, 3.6, PAVE.walk)
+  rect(DICE.x, DICE.z, 3.8, 3.8, PAVE.walk)
 
-  // Layer 1: on the field, the tower's ring and the two avenues of tables.
+  // Layer 1: the harlequin. Rose diamonds sit corner to corner; the cream between
+  // them makes the other half of the pattern. 8 across, 9 down, all inside the field.
   layer(1)
-  arc(TOWER.x, TOWER.z, TOWER.size * 0.62, TOWER.size * 0.62 + 1, 0, Math.PI * 2, 40, PAVE.towerRing)
-  for (const x of [...new Set(DATA.tables.map((t) => t.x))]) {
-    const zs = DATA.tables.filter((t) => t.x === x).map((t) => t.z)
-    const top = Math.min(...zs) - 2.4
-    const bottom = Math.max(...zs) + 2.4
-    rect(x, (top + bottom) / 2, TABLE.depth + TABLE.seatZ * 2 + 2.4, bottom - top, PAVE.avenue)
+  const cols = 8
+  const rows = 9
+  const ha = (x1 - x0) / (cols * 2)
+  const hb = (z1 - z0) / (rows * 2)
+  for (let c = 0; c < cols; c += 1) {
+    for (let r = 0; r < rows; r += 1) {
+      diamond(x0 + ha * (2 * c + 1), z0 + hb * (2 * r + 1), ha * 0.94, hb * 0.94, PAVE.diamond)
+    }
   }
 
-  // Layer 2: the entrance path from the spawn point (its terracotta edges beside
-  // it, not over it) and the spokes joining the pads to the square.
+  // Layer 2: the felt disc and gold ring under the house of cards, four gold pips
+  // round it, the two avenues of tables in teal felt with gold edges, and the
+  // centre-stage table's own felt pad.
   layer(2)
+  const ring = 4.4
+  arc(TOWER.x, TOWER.z, 0, ring, 0, Math.PI * 2, 40, PAVE.towerFelt)
+  arc(TOWER.x, TOWER.z, ring, ring + 0.55, 0, Math.PI * 2, 40, PAVE.towerRing)
+  for (let k = 0; k < 4; k += 1) {
+    const [px, pz] = polar(TOWER.x, TOWER.z, ring + 1.3, Math.PI / 4 + (k * Math.PI) / 2)
+    diamond(px, pz, 0.42, 0.62, PAVE.towerPip)
+  }
+  for (const x of AVENUE_XS) {
+    const { z, len } = avenueSpan(x)
+    rect(x, z, FELT_D + 0.5, len + 0.5, PAVE.avenueEdge)
+  }
+  for (const t of SOLO_TABLES) rect(t.x, t.z, FELT_W + 0.5, FELT_D + 0.5, PAVE.avenueEdge, t.ry)
+
+  // Layer 3: the felt itself (inside its gold edge), the entrance path from the spawn
+  // point with ruby edges beside it (not over it), and the spokes joining the pads
+  // to the square.
+  layer(3)
+  for (const x of AVENUE_XS) {
+    const { z, len } = avenueSpan(x)
+    rect(x, z, FELT_D, len, PAVE.avenue)
+  }
+  for (const t of SOLO_TABLES) rect(t.x, t.z, FELT_W, FELT_D, PAVE.avenue, t.ry)
   const pathStart = z1 + trim - 0.2
   const pathEnd = SPAWN[2] + 3
   const pathMid = (pathStart + pathEnd) / 2
@@ -162,15 +211,15 @@ export function createPlazaGeometry(tile) {
 
 /* ---- Props ----------------------------------------------------------------------- */
 
-const LAMP_METAL = '#4a4560'
-const LAMP_GLOW = '#ffe2a0'
-const STRING_LIGHTS = ['#ffd27a', '#7ff6ff', '#ff9ad5', '#c6a0ff']
+const LAMP_METAL = SUITS.navy
+const LAMP_GLOW = '#fff1c4'
+const STRING_LIGHTS = ['#ff5c7a', '#ffd23d', '#3ff0d2', '#b77bff', '#ffffff']
 const LAMP_TOP = 3.98
 const ROPE_Y = 3.62
 const SAG = 0.5
-const GOLD = '#ffc93d'
-const BLUE = '#2f5bd8'
-const BRASS = '#e2ad45'
+const GOLD = SUITS.gold
+const BRASS = '#f2b53a'
+const CREAM = SUITS.cream
 
 /** Strings of little coloured bulbs hung between neighbouring lamp posts, sagging a little. */
 function stringLights() {
@@ -205,18 +254,18 @@ export const LAMP_BULBS = [
   ...STRINGS.bulbs,
 ]
 
-/** Lamp posts: a dark iron post on a brass foot, a lantern frame and a pointed cap. */
+/** Lamp posts: a navy post on a cream-and-gold foot, a lantern frame and a pointed cap. */
 function lampBoxes() {
   const boxes = []
   for (const [x, z] of LAMPS) {
     boxes.push(
-      { p: [x, 0.18, z], s: [0.6, 0.36, 0.6], c: '#5b5476' },
+      { p: [x, 0.18, z], s: [0.6, 0.36, 0.6], c: CREAM },
       { p: [x, 0.42, z], s: [0.36, 0.14, 0.36], c: BRASS },
       { p: [x, 2.0, z], s: [0.14, 3.3, 0.14], c: LAMP_METAL },
       { p: [x, LAMP_TOP - 0.27, z], s: [0.48, 0.07, 0.48], c: BRASS },
       { p: [x, LAMP_TOP + 0.27, z], s: [0.56, 0.08, 0.56], c: BRASS },
       { p: [x, LAMP_TOP + 0.4, z], s: [0.3, 0.18, 0.3], c: LAMP_METAL, ry: Math.PI / 4 },
-      { p: [x, LAMP_TOP + 0.56, z], s: [0.12, 0.14, 0.12], c: BRASS, ry: Math.PI / 4 },
+      { p: [x, LAMP_TOP + 0.56, z], s: [0.12, 0.14, 0.12], c: SUITS.ruby, ry: Math.PI / 4 },
     )
     // Four thin posts framing the lantern.
     for (const cx of [-1, 1]) {
@@ -226,78 +275,76 @@ function lampBoxes() {
   return boxes
 }
 
-/** Stone planters by the entrance, rimmed in brass; their crystals are drawn by Island. */
+/** Cream stone planters by the entrance, rimmed in gold; their crystals are drawn by Island. */
 function planterBoxes() {
   const boxes = []
   for (const [x, z, w, d] of PLANTERS) {
-    boxes.push({ p: [x, 0.28, z], s: [w, 0.56, d], c: '#4f4868' })
+    boxes.push({ p: [x, 0.28, z], s: [w, 0.56, d], c: CREAM })
     boxes.push({ p: [x, 0.6, z], s: [w + 0.12, 0.08, d + 0.12], c: BRASS })
     // A dark bed inside the rim, just proud of it, for the crystals to grow from.
-    boxes.push({ p: [x, 0.655, z], s: [w - 0.24, 0.03, d - 0.24], c: '#2c2840' })
+    boxes.push({ p: [x, 0.655, z], s: [w - 0.24, 0.03, d - 0.24], c: SUITS.navy })
   }
   return boxes
 }
 
 /**
- * The clock tower's dimensions: a stepped base, a banded shaft, and the clock room
- * whose four faces (and hands, and roof) ClockTower.jsx draws.
+ * The house of cards (see CardTower): giant square cards `card` wide and `thick`
+ * thick, leaning `lean` from upright in pairs (A-frames), with a flat card on each
+ * pair, in `tiers` tiers, standing on a plinth whose top is at `base`.
  */
-export const CLOCK = {
-  shaftTop: 7.35,
-  roomSize: 3.6,
-  roomHeight: 3.4,
-  /** Centre height of the clock faces. */
-  y: 7.35 + 1.7,
-  faceSize: 2.9,
-}
+export const HOUSE = { card: 2.2, thick: 0.1, lean: Math.PI / 6, base: 0.62, tiers: 3 }
 
+/** The house of cards' plinth: cream stone steps, a gold rim and a felt top. */
 function towerBoxes() {
-  const { x, z } = TOWER
-  const half = CLOCK.roomSize / 2
-  const boxes = [
-    { p: [x, 0.2, z], s: [TOWER.size, 0.4, TOWER.size], c: '#a7aeb8' },
-    { p: [x, 0.575, z], s: [TOWER.size - 0.7, 0.35, TOWER.size - 0.7], c: GOLD },
-    { p: [x, 4.05, z], s: [3, 6.6, 3], c: '#fff1d6' },
-    { p: [x, CLOCK.y, z], s: [CLOCK.roomSize, CLOCK.roomHeight, CLOCK.roomSize], c: BLUE },
-    { p: [x, CLOCK.shaftTop, z], s: [CLOCK.roomSize + 0.3, 0.3, CLOCK.roomSize + 0.3], c: GOLD },
-    { p: [x, CLOCK.y + CLOCK.roomHeight / 2, z], s: [CLOCK.roomSize + 0.3, 0.3, CLOCK.roomSize + 0.3], c: GOLD },
+  const { x, z, w, d } = TOWER
+  return [
+    { p: [x, 0.2, z], s: [w, 0.4, d], c: CREAM },
+    { p: [x, 0.47, z], s: [w - 0.3, 0.14, d - 0.3], c: GOLD },
+    { p: [x, 0.58, z], s: [w - 0.5, 0.08, d - 0.5], c: '#1d7f73' },
   ]
-  // Blue corner pillars and gold bands up the shaft.
-  for (const cx of [-1, 1]) {
-    for (const cz of [-1, 1]) boxes.push({ p: [x + cx * 1.4, 4.05, z + cz * 1.4], s: [0.5, 6.6, 0.5], c: BLUE })
+}
+
+/** Pip layouts on a die face, in units of a third of its width: 1 to 6. */
+const PIPS = [
+  [],
+  [[0, 0]],
+  [[-1, -1], [1, 1]],
+  [[-1, -1], [0, 0], [1, 1]],
+  [[-1, -1], [1, -1], [-1, 1], [1, 1]],
+  [[-1, -1], [1, -1], [0, 0], [-1, 1], [1, 1]],
+  [[-1, -1], [-1, 0], [-1, 1], [1, -1], [1, 0], [1, 1]],
+]
+
+/**
+ * One die: a cube `size` wide whose bottom sits at `y`, turned `ry`, with pips on
+ * its five visible faces. `faces` gives the number on top, +Z, -Z, +X and -X.
+ */
+function dieBoxes(cx, y, cz, size, ry, body, pip, faces) {
+  const boxes = [{ p: [cx, y + size / 2, cz], s: [size, size, size], c: body, ry }]
+  const k = size * 0.27
+  const p = size * 0.17
+  const out = size / 2 + 0.004
+  const at = (lx, ly, lz) => {
+    const [dx, dz] = rotateXZ(lx, lz, ry)
+    return [cx + dx, y + size / 2 + ly, cz + dz]
   }
-  for (const y of [2.5, 5]) boxes.push({ p: [x, y, z], s: [3.2, 0.25, 3.2], c: GOLD })
-  // Corner posts framing the clock faces.
-  for (const cx of [-1, 1]) {
-    for (const cz of [-1, 1]) {
-      boxes.push({ p: [x + cx * half, CLOCK.y, z + cz * half], s: [0.32, CLOCK.roomHeight, 0.32], c: GOLD })
-    }
-  }
-  // A door on the side facing the entrance.
-  boxes.push({ p: [x, 1.65, z + 1.52], s: [1.3, 2.1, 0.08], c: GOLD })
-  boxes.push({ p: [x, 1.6, z + 1.55], s: [1.05, 1.9, 0.08], c: '#5b3520' })
+  const [top, front, back, east, west] = faces
+  for (const [u, v] of PIPS[top]) boxes.push({ p: at(u * k, out, v * k), s: [p, 0.03, p], c: pip, ry })
+  for (const [u, v] of PIPS[front]) boxes.push({ p: at(u * k, v * k, out), s: [p, p, 0.03], c: pip, ry })
+  for (const [u, v] of PIPS[back]) boxes.push({ p: at(u * k, v * k, -out), s: [p, p, 0.03], c: pip, ry })
+  for (const [u, v] of PIPS[east]) boxes.push({ p: at(out, v * k, u * k), s: [0.03, p, p], c: pip, ry })
+  for (const [u, v] of PIPS[west]) boxes.push({ p: at(-out, v * k, u * k), s: [0.03, p, p], c: pip, ry })
   return boxes
 }
 
-/** A giant hourglass by the entrance: two heaps of sand tip to tip between wooden plates. */
-function hourglassBoxes() {
-  const { x, z } = HOURGLASS
-  const WOOD = '#8a4f2a'
-  const SAND = '#f3c75a'
-  const boxes = [
-    { p: [x, 0.15, z], s: [2.4, 0.3, 2.4], c: WOOD },
-    { p: [x, 0.36, z], s: [2.1, 0.12, 2.1], c: GOLD },
-    { p: [x, 4.05, z], s: [2.4, 0.3, 2.4], c: WOOD },
-    { p: [x, 3.84, z], s: [2.1, 0.12, 2.1], c: GOLD },
-    { p: [x, 2.1, z], s: [0.24, 0.5, 0.24], c: '#bfe9ff' },
+/** A giant pair of dice by the entrance: a ruby die with a cream one stacked on it. */
+function diceBoxes() {
+  const { x, z } = DICE
+  return [
+    { p: [x, 0.08, z], s: [2.6, 0.16, 2.6], c: GOLD, ry: Math.PI / 4 },
+    ...dieBoxes(x - 0.2, 0.16, z + 0.1, 1.7, 0.35, SUITS.ruby, '#ffffff', [5, 3, 4, 6, 1]),
+    ...dieBoxes(x - 0.05, 1.86, z + 0.05, 1.1, -0.45, CREAM, SUITS.ruby, [6, 2, 5, 3, 4]),
   ]
-  for (const cx of [-1, 1]) {
-    for (const cz of [-1, 1]) boxes.push({ p: [x + cx * 1.0, 2.1, z + cz * 1.0], s: [0.2, 3.5, 0.2], c: WOOD })
-  }
-  // Most of the sand has run through: a big heap below, a little left above.
-  ;[[1.6, 0.6], [1.2, 0.95], [0.8, 1.28], [0.4, 1.58]].forEach(([w, y]) => boxes.push({ p: [x, y, z], s: [w, 0.34, w], c: SAND }))
-  ;[[0.45, 2.5], [0.8, 2.78], [1.1, 3.1]].forEach(([w, y]) => boxes.push({ p: [x, y, z], s: [w, 0.3, w], c: SAND }))
-  return boxes
 }
 
 /**
@@ -351,10 +398,10 @@ function guideFrameBoxes() {
   const boxes = []
   for (const side of [-1, 1]) {
     const [px, pz] = at(side * (GUIDE.width / 2 + 0.12), 0)
-    boxes.push({ p: [px, GUIDE.y / 2 + 0.9, pz], s: [0.28, GUIDE.y + 1.8, 0.28], c: '#4a4560', ry })
+    boxes.push({ p: [px, GUIDE.y / 2 + 0.9, pz], s: [0.28, GUIDE.y + 1.8, 0.28], c: SUITS.navy, ry })
   }
   const [fx, fz] = at(0, -0.06)
-  boxes.push({ p: [fx, GUIDE.y, fz], s: [GUIDE.width + 0.3, GUIDE.height + 0.3, 0.16], c: '#2c2840', ry })
+  boxes.push({ p: [fx, GUIDE.y, fz], s: [GUIDE.width + 0.3, GUIDE.height + 0.3, 0.16], c: GOLD, ry })
   const [rx, rz] = at(0, 0)
   boxes.push({ p: [rx, GUIDE.y + GUIDE.height / 2 + 0.28, rz], s: [GUIDE.width + 0.8, 0.22, 0.6], c: BRASS, ry })
   return boxes
@@ -367,14 +414,14 @@ export function lobbyBoxes() {
     ...STRINGS.rope,
     ...planterBoxes(),
     ...towerBoxes(),
-    ...hourglassBoxes(),
+    ...diceBoxes(),
     ...storeBoxes(),
     ...guideFrameBoxes(),
   ]
 }
 
-/** Rug colours cycled down the avenues of tables. */
-export const RUG_COLORS = ['#e85d5d', '#f2a93b', '#4aa3df', '#9b6bd6', '#3cb878']
+/** Rug colours cycled down the felt avenues: soft suit tones that stand out on teal. */
+export const RUG_COLORS = ['#ffb3c0', '#ffe08a', '#bfe9ff', '#ddc8ff', '#c2f2d6']
 
 /** A rug under each table and its two chairs, turned with it. */
 export const RUG_ITEMS = DATA.tables.map((t, i) => ({

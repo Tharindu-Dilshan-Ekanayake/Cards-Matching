@@ -10,8 +10,10 @@ import { create } from 'zustand'
 let toastId = 0
 
 export const useGame = create((set, get) => ({
-  /** 'connecting' | 'online' | 'offline' */
+  /** 'connecting' | 'online' | 'offline' | 'failed' | 'afk' (removed for being away) */
   status: 'connecting',
+  /** The server's "Are you still there?": { until } (epoch ms when you'd be removed), or null. */
+  afkWarn: null,
   selfId: null,
   roomId: null,
   capacity: 20,
@@ -31,13 +33,19 @@ export const useGame = create((set, get) => ({
   /** Duel outcome banner for this player: { win, reward, reason, score, until }. */
   result: null,
   /**
-   * This round's stop, sent but maybe not yet confirmed: { round, ms } (what the
-   * clock read). Lets the button and display react at once.
+   * Cards this player has flipped this turn but the server may not have confirmed
+   * yet: { key, cards: number[] } (key = the turn's number). Lets a card start
+   * turning at once.
    */
-  localPress: null,
+  localFlips: null,
+  /**
+   * Private reveals (Peek): { kind, cards: [{ i, f }], until, table } shown
+   * to this player only.
+   */
+  reveal: null,
   /** The "Quit the duel?" popup is open (only while a duel is under way). */
   quitAsk: false,
-  /** Full-screen edge glow at your table: { kind: 'zap' | 'bullseye', at, delay, until } (ms). */
+  /** Full-screen edge glow at your table: { kind: 'zap' | 'golden' | 'match', at, delay, until } (ms). */
   flash: null,
   /** Level-up celebration: { level, reward, title, until }. */
   levelUp: null,
@@ -55,4 +63,4 @@ export const useGame = create((set, get) => ({
   },
 }))
 
-export const isPlayingPhase = (phase) => phase === 'target' || phase === 'running' || phase === 'reveal'
+export const isPlayingPhase = (phase) => phase === 'deal' || phase === 'turn' || phase === 'reveal'

@@ -11,17 +11,18 @@ const TEX_W = 512
 const TEX_H = Math.round((TEX_W * GUIDE.height) / GUIDE.width)
 
 const STEPS = [
-  ['🎯', 'Read the TARGET time'],
-  ['👀', 'Watch the clock… then it goes BLIND!'],
-  ['✋', 'Hit STOP when you think it is time'],
-  ['🏆', `Closest wins the round · first to ${DATA.timer.winsNeeded}!`],
+  ['🃏', 'Flip 2 cards on your turn'],
+  ['✅', 'Match a pair: +1 point & go again'],
+  ['⭐', 'Golden pair = +2 points!'],
+  ['⚡', 'Peek & Shuffle: once each per duel'],
 ]
 
 function drawBoard(canvas) {
   const ctx = canvas.getContext('2d')
+  // Card-table felt.
   const bg = ctx.createLinearGradient(0, 0, 0, TEX_H)
-  bg.addColorStop(0, '#3a2a6e')
-  bg.addColorStop(1, '#22184a')
+  bg.addColorStop(0, '#1f8a7c')
+  bg.addColorStop(1, '#0f5a51')
   ctx.fillStyle = bg
   ctx.fillRect(0, 0, TEX_W, TEX_H)
 
@@ -30,7 +31,7 @@ function drawBoard(canvas) {
   ctx.textAlign = 'center'
   ctx.font = `700 46px ${GAME_FONT}`
   ctx.lineWidth = 8
-  ctx.strokeStyle = '#120a2a'
+  ctx.strokeStyle = '#073b35'
   ctx.strokeText('HOW TO PLAY', TEX_W / 2, 42)
   ctx.fillStyle = '#ffcf4a'
   ctx.fillText('HOW TO PLAY', TEX_W / 2, 42)
@@ -55,7 +56,7 @@ function drawBoard(canvas) {
   ctx.textAlign = 'center'
   ctx.font = `700 22px ${GAME_FONT}`
   ctx.fillStyle = '#ffe36b'
-  ctx.fillText(`🎯 Bullseye (±${(DATA.timer.bullseyeMs / 1000).toFixed(2)}s) = +$${DATA.timer.bullseyeCash} bonus!`, TEX_W / 2, TEX_H - 26)
+  ctx.fillText(`Most points wins $${DATA.winReward}! · ${DATA.cards.turnSec}s per turn`, TEX_W / 2, TEX_H - 26)
 }
 
 /** The "how to play" sign by the entrance: one quad, one 512 px canvas texture. */

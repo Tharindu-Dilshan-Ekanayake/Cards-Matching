@@ -7,7 +7,7 @@ import { useDisposable } from './useDisposable'
 
 /**
  * Pooled particle effects: confetti over a duel's winner, and little sparks when a
- * button zaps its player (or someone hits a bullseye). Fixed-size pools, preallocated typed
+ * player is jolted, or a pair is found. Fixed-size pools, preallocated typed
  * arrays, one instanced draw call per effect; nothing is allocated per frame or per
  * spawn.
  *
@@ -15,7 +15,7 @@ import { useDisposable } from './useDisposable'
  */
 
 const CONFETTI = 160
-/** Sparks from a zap (and a bullseye's glitter). */
+/** Sparks from a jolt, or over a pair as it is found. */
 const SPARKS = 48
 const GRAVITY = 9
 

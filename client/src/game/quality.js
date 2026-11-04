@@ -6,8 +6,9 @@ import { usePlatform } from '../bloxity/platform'
  * Graphics presets. Every visual feature reads one of these values before it
  * renders anything; LOW is the floor for low-end phones.
  *
- * maxFullAvatars - remote players drawn as full skinned avatars (6+ draw calls
- *                  each); the rest become one instanced low-poly crowd.
+ * maxFullAvatars - remote players drawn as full skinned avatars (a merged body plus
+ *                  one draw call per worn item), chosen from those in view; the
+ *                  rest become one instanced low-poly crowd.
  */
 export const PRESETS = {
   low: {
@@ -15,9 +16,9 @@ export const PRESETS = {
     shadows: false,
     shadowMapSize: 0,
     particles: false,
-    maxFullAvatars: 3,
+    maxFullAvatars: 10,
     /** Name tags drawn at once (nearest players), and table signs (nearest tables). */
-    maxNames: 4,
+    maxNames: 5,
     maxTableSigns: 4,
     nameDistance: 18,
     labelDistance: 22,
@@ -31,9 +32,9 @@ export const PRESETS = {
     shadows: true,
     shadowMapSize: 1024,
     particles: true,
-    maxFullAvatars: 6,
-    maxNames: 10,
-    maxTableSigns: 6,
+    maxFullAvatars: 16,
+    maxNames: 12,
+    maxTableSigns: 8,
     nameDistance: 28,
     labelDistance: 30,
     viewDistance: 260,
@@ -46,9 +47,9 @@ export const PRESETS = {
     shadows: true,
     shadowMapSize: 2048,
     particles: true,
-    maxFullAvatars: 10,
-    maxNames: 16,
-    maxTableSigns: 10,
+    maxFullAvatars: 24,
+    maxNames: 20,
+    maxTableSigns: 15,
     nameDistance: 40,
     labelDistance: 38,
     viewDistance: 420,
@@ -64,12 +65,25 @@ const ORDER = ['low', 'medium', 'high']
 const PLATFORM_PRESET = { Low: 'low', Medium: 'medium', High: 'high', Ultra: 'high' }
 
 /**
- * Everyone starts on LOW. Bloxity's graphics_quality setting reports a value
- * straight away (its default is "High" for everyone), so only a change the player
- * makes in the Bloxity menu during the session moves the preset.
+ * The starting preset: LOW on phones, tablets and machines with 4 cores or fewer,
+ * MEDIUM elsewhere. <PerformanceMonitor> drops it a step whenever the frame rate
+ * stays under 45.
+ */
+function detectPreset() {
+  if (typeof window === 'undefined') return 'low'
+  const coarse = window.matchMedia?.('(pointer: coarse)').matches
+  const mobile = coarse || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '')
+  const cores = navigator.hardwareConcurrency || 2
+  return mobile || cores <= 4 ? 'low' : 'medium'
+}
+
+/**
+ * Bloxity's graphics_quality setting reports a value straight away (its default is
+ * "High" for everyone), so only a change the player makes in the Bloxity menu during
+ * the session moves the preset from the detected one.
  */
 export const useQuality = create((set, get) => ({
-  preset: 'low',
+  preset: detectPreset(),
 
   /** Called by <PerformanceMonitor> when FPS stays under 45. */
   drop: () => {

@@ -4,19 +4,22 @@ import DATA from '../../../shared/gameData.json'
  * World layout derived from shared/gameData.json, which the server also reads, so
  * table positions and seat checks can never disagree between the two.
  *
- * The map is a round island floating above a sea of clouds at sunset, fenced by a
- * brass railing, with giant gears and glowing crystals round its edge.
+ * The map is "Card Kingdom": a round island floating above a pink sea of clouds on a
+ * bright day, fenced by a gold railing, with giant memory cards slowly turning and
+ * glowing crystals round its edge.
  *
- * The lobby is a paved town square with a clock tower in the middle. The ten duel
- * tables stand in two avenues either side of it (five down the west, five down the
- * east), each with its two players facing each other across a timer. Around the
- * square: the leaderboards in a row along the north, the chair showroom in a horseshoe
- * on the east, the Store on the west and the entrance arch on the south.
+ * The lobby is a paved square (rose diamonds on cream) with a giant house of cards in
+ * the middle. Fifteen duel tables: two felt avenues of seven either side of it (west
+ * and east) and a centre-stage table behind it, each with its two players facing
+ * each other across a board of memory cards. Around the square: the leaderboards in a row along
+ * the north, the chair showroom in a horseshoe on the east, the Store on the west and
+ * the entrance arch on the south.
  */
 
 export { DATA }
 export const TABLE = DATA.table
-export const TIMER = DATA.timer
+export const CARDS = DATA.cards
+export const POWERS = DATA.powers
 export const WORLD_HALF = DATA.world.half
 /** The island is a disc this big round the origin; the railing runs just inside its rim. */
 export const ISLAND_RADIUS = WORLD_HALF
@@ -65,12 +68,33 @@ export function seatPosition(tableId, index) {
 /** Chairs are modelled facing -Z: the yaw that turns one to face where its seat faces. */
 export const chairYaw = (seat) => seat.ry + Math.PI
 
-/* ---- The timer on every table ------------------------------------------------------ */
+/* ---- The card board on every table ------------------------------------------------- */
 
-/** The clock housing in the middle of the table; a display faces each seat. */
-export const DEVICE = { width: 0.62, height: 0.4, depth: 0.28 }
-/** Each seat's big button, this far from the table's middle towards that seat. */
-export const BUTTON_Z = 0.56
+/** One card: width (table X), depth (table Z), thickness, corner radius, and the gap between cards. */
+export const CARD = { w: 0.4, d: 0.4, t: 0.035, r: 0.06, gap: 0.07 }
+export const CARDS_PER_TABLE = CARDS.cols * CARDS.rows
+/** The felt mat under the cards, a little larger than the board. */
+export const BOARD = {
+  w: CARDS.cols * CARD.w + (CARDS.cols - 1) * CARD.gap + 0.26,
+  d: CARDS.rows * CARD.d + (CARDS.rows - 1) * CARD.gap + 0.26,
+}
+/** Height of a resting card's middle: on the mat, on the table top. */
+export const CARD_Y = TABLE.height + 0.008 + CARD.t / 2
+
+/**
+ * Card `i` in its table's own frame: [x, z]. Columns run along X, rows along Z, row
+ * 0 at the -Z end (seat 1's side); index = row * cols + col.
+ */
+export function cardLocal(i) {
+  const col = i % CARDS.cols
+  const row = Math.floor(i / CARDS.cols)
+  return [
+    (col - (CARDS.cols - 1) / 2) * (CARD.w + CARD.gap),
+    (row - (CARDS.rows - 1) / 2) * (CARD.d + CARD.gap),
+  ]
+}
+
+export const powerById = (id) => POWERS.find((p) => p.id === id) || null
 
 /* ---- Lobby -------------------------------------------------------------------------- */
 
@@ -86,8 +110,11 @@ export const FLOOR = { plaza: 0.012, plazaStep: 0.012, rug: 0.06, shadow: 0.075,
 /** The paved square: its edges in world units. */
 export const PLAZA = { x0: -14, x1: 14, z0: -17, z1: 16 }
 
-/** The clock tower in the middle of the square: a TOWER.size square base. */
-export const TOWER = { x: 0, z: -3, size: 5 }
+/**
+ * The house of cards in the middle of the square (see CardTower): its plinth is
+ * TOWER.w across (X) by TOWER.d deep (Z).
+ */
+export const TOWER = { x: 0, z: -3, w: 7.2, d: 3 }
 
 /**
  * Lamp posts round the square's edge, in order (bunting hangs between neighbours),
@@ -121,19 +148,19 @@ export const STORE_STATUE = 'plat_throne'
 
 /** The "how to play" board beside the entrance path, turned towards the walk in. */
 export const GUIDE_BOARD = { x: -10.5, z: 21.5, ry: 1.25 }
-/** A giant hourglass on the other side of the entrance. */
-export const HOURGLASS = { x: 10.5, z: 21.5 }
+/** A giant pair of dice on the other side of the entrance. */
+export const DICE = { x: 10.5, z: 21.5 }
 
 /**
- * Giant brass gears standing round the island's edge, each turned to face the middle:
- * [x, z, radius]. Each stands on a stone block.
+ * Giant memory cards slowly turning on stone plinths round the island's edge:
+ * [x, z, width]. Placed so a turning card never reaches the railing.
  */
-export const GEARS = [
-  [-21.5, -18, 3.4], [21.5, -18, 3.4], [-21.5, 18.5, 3], [21.5, 18.5, 3],
-  [-27.4, -9, 1.9], [-27.4, 9, 1.9],
+export const GIANT_CARDS = [
+  [-21, -17.6, 5], [21, -17.6, 5], [-21, 18, 4.4], [21, 18, 4.4],
+  [-27, -9, 2.8], [-27, 9, 2.8],
 ]
 
-/** Clusters of glowing crystals: [x, z, size]. */
+/** Clusters of glowing suit-coloured crystals: [x, z, size]. */
 export const CRYSTALS = [
   [-12.5, 26.5, 1], [12.5, 26.5, 1], [-25.5, -14.5, 0.9], [25.5, -13.5, 0.9],
   [-17, 24, 0.8], [17, 24, 0.8], [0, -28, 1.1], [-28.5, 1, 0.7],
@@ -171,12 +198,12 @@ for (const lb of DATA.leaderboards) box(lb.x, lb.z, 6, 0.6, lb.ry)
 for (const c of SHOWROOM_CHAIRS) box(c.shop[0], c.shop[1], 2, 2, c.ry)
 // The booth, from its back wall to the front of its counter.
 box(STORE.x - 0.17, STORE.z, 4.1, 8)
-box(TOWER.x, TOWER.z, TOWER.size, TOWER.size)
+box(TOWER.x, TOWER.z, TOWER.w, TOWER.d)
 box(GUIDE_BOARD.x, GUIDE_BOARD.z, 5.4, 0.5, GUIDE_BOARD.ry)
-box(HOURGLASS.x, HOURGLASS.z, 2.4, 2.4)
+box(DICE.x, DICE.z, 2.6, 2.6)
 for (const [x, z, w, d] of PLANTERS) box(x, z, w, d)
-// Gears turn to face the middle of the island: a thin slab, on a stone block.
-for (const [x, z, r] of GEARS) box(x, z, r * 2 + 0.4, 1.2, Math.atan2(-x, -z))
+// A turning card sweeps a disc: its plinth is the obstacle.
+for (const [x, z, w] of GIANT_CARDS) COLLIDERS.push({ x, z, r: w * 0.45 })
 for (const [x, z, size] of CRYSTALS) box(x, z, 1.6 * size, 1.6 * size)
 for (const [x, z] of LAMPS) box(x, z, 0.5, 0.5)
 for (const side of [-1, 1]) box(side * ARCH.halfWidth, ARCH.z, 1.5, 1.5)
