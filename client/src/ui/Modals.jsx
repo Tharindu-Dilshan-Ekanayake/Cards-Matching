@@ -620,7 +620,7 @@ const HELP_STEPS = [
   ['✅', 'Match a pair', 'If the two cards match, they are yours: +1 point, and you go again! If they don\'t, they turn back over and it is your opponent\'s turn.'],
   ['⭐', 'The golden pair', `One pair is golden and worth ${DATA.cards.goldenPoints} points. Find it!`],
   ['🧠', 'Remember everything', 'Watch your opponent\'s flips too: every card you have seen is a pair waiting to happen.'],
-  ['⚡', 'Power-ups', 'Each duel you can use each power-up once, on your turn: 👁️ PEEK (see one hidden card), 💡 HINT (flash a matching pair), 🔀 SHUFFLE (mix up every hidden card) and ❄️ FREEZE (skip their next turn). Keys 1-4 on a keyboard.'],
+  ['⚡', 'Power-ups', 'Each duel you can use each power-up once, on your turn: 👁️ PEEK (see one hidden card, only you) and 🔀 SHUFFLE (mix up every hidden card, so nobody remembers where they are). Keys 1 and 2 on a keyboard.'],
   ['🏆', 'Most points wins', `The duel ends as soon as nobody can catch up. The winner gets $${DATA.winReward}; even if you lose, you get $${DATA.lossReward} and XP for playing.`],
   ['🚀', 'Losers get ejected!', 'Lose the duel and your chair launches you out of your seat, while the winner dances on the table.'],
   ['🏃', 'No quitting!', `Quit a duel and it counts as a loss: you pay $${DATA.forfeit.penalty} to your opponent. Let two turns run out and you lose too.`],

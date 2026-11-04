@@ -18,7 +18,7 @@ import { BOARD, CARD, CARD_Y, CARDS, CARDS_PER_TABLE, cardLocal, DATA, rotateXZ,
 import { useDisposable } from './useDisposable'
 
 /**
- * The memory cards on every table: 200 cards (10 tables x 20) in ONE instanced draw
+ * The memory cards on every table: 300 cards (15 tables x 20) in ONE instanced draw
  * call, plus one for the turn lamps at each player's edge of the mat.
  *
  * Each frame works out every card's pose from the synced board (face up or down,
@@ -55,14 +55,12 @@ const COLORS = {
   miss: new Color('#ff6b6b'),
   golden: new Color('#ffd23d'),
   peek: new Color('#e4ccff'),
-  hint: new Color('#fff1a0'),
   rest: new Color('#ece6ff'),
 }
 const LAMP = {
   off: new Color('#3b2f5c'),
   mine: new Color('#5cff8a'),
   theirs: new Color('#ff9ec7'),
-  frozen: new Color('#9fe4ff'),
 }
 
 const _obj = new Object3D()
@@ -80,13 +78,24 @@ const shownCell = new Int16Array(TOTAL).fill(-1)
 const shownTint = new Int8Array(TOTAL).fill(-1)
 const TINT_LIST = [
   COLORS.up, COLORS.mine, COLORS.theirs, COLORS.seat[0], COLORS.seat[1], COLORS.miss,
-  COLORS.golden, COLORS.peek, COLORS.hint, COLORS.rest,
+  COLORS.golden, COLORS.peek, COLORS.rest,
 ]
-const TI = Object.fromEntries(['up', 'mine', 'theirs', 'seat0', 'seat1', 'miss', 'golden', 'peek', 'hint', 'rest'].map((k, i) => [k, i]))
+const TI = Object.fromEntries(['up', 'mine', 'theirs', 'seat0', 'seat1', 'miss', 'golden', 'peek', 'rest'].map((k, i) => [k, i]))
 
 /** Per table: the phase seen last frame, when its current deal started (epoch ms). */
 const seenPhase = TABLES.map(() => '')
 const dealStart = new Float64Array(TABLES.length)
+/** Per table: its yaw's cos / sin (card offsets are turned with the table, inline). */
+const TABLE_COS = Float64Array.from(TABLES, (t) => Math.cos(t.ry || 0))
+const TABLE_SIN = Float64Array.from(TABLES, (t) => Math.sin(t.ry || 0))
+/**
+ * Per table: the synced state last drawn and whether every card was at rest then. A
+ * table whose state hasn't changed, with no effect running, is skipped entirely:
+ * most of the 15 tables sit idle most of the time.
+ */
+const drawnState = TABLES.map(() => null)
+const atRest = new Uint8Array(TABLES.length)
+const DEAL_TOTAL_MS = N * DEAL_STEP_MS + DEAL_MS + 100
 /** Per lamp (table x 2): colour index written. */
 const lampShown = new Int8Array(TABLES.length * 2).fill(-1)
 
@@ -211,26 +220,36 @@ export function CardBoards() {
       const mySeat = mine ? match.seat : -1
       if (phase === 'deal' && seenPhase[ti] !== 'deal') dealStart[ti] = now
       seenPhase[ti] = phase
+      const fx = boardFx.get(def.id)
+      const effectsUntil = Math.max(
+        phase === 'deal' ? dealStart[ti] + DEAL_TOTAL_MS : 0,
+        fx ? Math.max((fx.shuffleAt || 0) + SHUFFLE_MS, (fx.matchAt || 0) + POP_MS, (fx.missAt || 0) + SHAKE_MS) : 0,
+      )
+      // Nothing new at someone else's table and nothing moving: leave it as drawn.
+      if (!mine && t === drawnState[ti] && atRest[ti] && now > effectsUntil) continue
+      drawnState[ti] = t
+      let tableMoved = false
+      let tableTurning = false
+      const c = TABLE_COS[ti]
+      const sn = TABLE_SIN[ti]
       const board = t?.board
       const owners = t?.owners
       const flips = mine && localFlips && localFlips.key === match.turnNo ? localFlips.cards : null
       const peek = mine && reveal && reveal.table === def.id && reveal.until > now ? reveal : null
-      const fx = boardFx.get(def.id)
       const shuffleT = fx?.shuffleAt ? (now - fx.shuffleAt) / SHUFFLE_MS : 2
       const popT = fx?.matchAt ? (now - fx.matchAt) / POP_MS : 2
       const shakeT = fx?.missAt ? (now - fx.missAt) / SHAKE_MS : 2
-      const dealing = phase === 'deal' && now - dealStart[ti] < N * DEAL_STEP_MS + DEAL_MS + 100
+      const dealing = phase === 'deal' && now - dealStart[ti] < DEAL_TOTAL_MS
       const missing = phase === 'reveal' && t && !t.hit
 
       // Turn lamps.
       for (let s = 0; s < 2; s += 1) {
         let c = 0
-        if (t?.frozen?.[s]) c = 3
-        else if (t && t.turn === s && (phase === 'turn' || phase === 'reveal')) c = mine ? (s === mySeat ? 1 : 2) : 1
+        if (t && t.turn === s && (phase === 'turn' || phase === 'reveal')) c = mine ? (s === mySeat ? 1 : 2) : 1
         const li = ti * 2 + s
         if (lampShown[li] !== c) {
           lampShown[li] = c
-          lamps.setColorAt(li, c === 0 ? LAMP.off : c === 1 ? LAMP.mine : c === 2 ? LAMP.theirs : LAMP.frozen)
+          lamps.setColorAt(li, c === 0 ? LAMP.off : c === 1 ? LAMP.mine : LAMP.theirs)
           lampsChanged = true
         }
       }
@@ -252,7 +271,7 @@ export function CardBoards() {
             if (peek.cards[k].i !== i) continue
             up = true
             cell = cellOfCode(peek.cards[k].f)
-            tint = peek.kind === 'hint' ? TI.hint : TI.peek
+            tint = TI.peek
           }
         }
 
@@ -280,6 +299,7 @@ export function CardBoards() {
           angle[g] = a0 < target ? Math.min(target, a0 + step) : Math.max(target, a0 - step)
         }
         const a = angle[g]
+        if (a !== target) tableTurning = true
 
         // Pose in the table's frame.
         let lx = LOCAL[i][0]
@@ -318,9 +338,9 @@ export function CardBoards() {
           scale *= 1.04
         }
 
-        const [dx, dz] = rotateXZ(lx, lz, def.ry)
-        const x = def.x + dx
-        const z = def.z + dz
+        // rotateXZ, inline (no array per card per frame).
+        const x = def.x + lx * c + lz * sn
+        const z = def.z - lx * sn + lz * c
         const yaw = def.ry + spin
         const o = g * 6
         if (
@@ -345,7 +365,9 @@ export function CardBoards() {
         _obj.updateMatrix()
         mesh.setMatrixAt(g, _obj.matrix)
         matrices = true
+        tableMoved = true
       }
+      atRest[ti] = tableMoved || tableTurning ? 0 : 1
     }
 
     if (matrices) mesh.instanceMatrix.needsUpdate = true

@@ -9,9 +9,9 @@ import DATA from '../../../shared/gameData.json'
  * glowing crystals round its edge.
  *
  * The lobby is a paved square (rose diamonds on cream) with a giant house of cards in
- * the middle. The ten duel tables stand in two felt avenues either side of it (five
- * down the west, five down the east), each with its two players facing each other
- * across a board of memory cards. Around the square: the leaderboards in a row along
+ * the middle. Fifteen duel tables: two felt avenues of seven either side of it (west
+ * and east) and a centre-stage table behind it, each with its two players facing
+ * each other across a board of memory cards. Around the square: the leaderboards in a row along
  * the north, the chair showroom in a horseshoe on the east, the Store on the west and
  * the entrance arch on the south.
  */

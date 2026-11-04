@@ -321,18 +321,13 @@ export const sfx = {
     for (let i = 0; i < 16; i += 1) noise(i * 0.035, 0.03, { freq: 1800 + (i % 4) * 500, q: 2, gain: 0.07 })
     noise(0.58, 0.12, { freq: 900, q: 0.8, gain: 0.1 })
   }),
-  /** Freeze: an icy glass shimmer sliding down. */
-  freeze: play(() => {
-    ;[C7, G6, E6, C6].forEach((f, i) => bell(f, i * 0.05, 0.7, 0.08))
-    noise(0, 0.8, { filter: 'highpass', freq: 9000, freqEnd: 4000, gain: 0.05, reverb: 0.6 })
-  }),
-  /** Peek / hint: a soft magic whoosh upwards. */
+  /** Peek: a soft magic whoosh upwards. */
   peek: play(() => {
     noise(0, 0.4, { freq: 600, freqEnd: 4000, q: 1, gain: 0.06, reverb: 0.4 })
     bell(A5, 0.12, 0.5, 0.08)
     bell(E6, 0.2, 0.6, 0.08)
   }),
-  /** Frozen (your turn was skipped) or similar setback: an electric buzz and a cartoon "boing". */
+  /** A setback: an electric buzz and a cartoon "boing". */
   zap: play(() => {
     voice(110, 0, 0.32, { type: 'sawtooth', filter: 2400, gain: 0.09, vibrato: 60 })
     noise(0, 0.3, { freq: 5000, q: 2, gain: 0.08 })

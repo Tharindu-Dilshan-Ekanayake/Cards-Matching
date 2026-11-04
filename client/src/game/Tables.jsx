@@ -99,7 +99,7 @@ const gemPlacement = placement()
 const snowPlacement = placement()
 
 /**
- * All ten tables: tops, felt mats, legs, both chairs each and the memory cards
+ * All fifteen tables: tops, felt mats, legs, both chairs each and the memory cards
  * between them (see CardBoards), as a handful of instanced meshes. Each seat's chair takes the
  * colour, finish and style of the chair its occupant has equipped.
  */

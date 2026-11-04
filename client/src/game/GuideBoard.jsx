@@ -14,7 +14,7 @@ const STEPS = [
   ['🃏', 'Flip 2 cards on your turn'],
   ['✅', 'Match a pair: +1 point & go again'],
   ['⭐', 'Golden pair = +2 points!'],
-  ['⚡', 'Peek, Hint, Shuffle, Freeze: once each'],
+  ['⚡', 'Peek & Shuffle: once each per duel'],
 ]
 
 function drawBoard(canvas) {

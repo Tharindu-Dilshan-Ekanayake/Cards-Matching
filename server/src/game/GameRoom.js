@@ -18,15 +18,24 @@ const LEADERBOARD_PUSH_MS = 15000
 const PLAYTIME_TICK_MS = 30000
 /** Close code for a session replaced by the same account joining from elsewhere. */
 const REPLACED = 4100
+/** Close code for a player removed for being away (AFK): their client must not rejoin by itself. */
+const AFK_KICKED = 4101
+const AFK = DATA.afk
+/**
+ * Table phases in which a seated player counts as present: a duel under way (or its
+ * result) has its own AFK rule (two empty turns lose the duel). Waiting alone at a
+ * table does not count: an AFK player there blocks the table and a server slot.
+ */
+const DUEL_PHASES = new Set(['countdown', 'deal', 'turn', 'reveal', 'ended'])
 
 /** profile id -> live session, across every room in this process. */
 const liveByProfile = new Map()
 
 /**
- * One game server: up to 20 players sharing the island and its ten tables.
+ * One game server: up to DATA.roomSize (30) players sharing the island and its 15 tables.
  *
  * Colyseus matchmaking fills a room to `maxClients`, locks it, and `joinOrCreate`
- * then opens a new one, so "server size 20" is just the cap here.
+ * then opens a new one, so "server size 30" is just the cap here.
  */
 class GameRoom extends Room {
   maxClients = DATA.roomSize
@@ -57,6 +66,7 @@ class GameRoom extends Room {
       for (const table of this.tables) table.tick(now)
     }, TICK_MS)
     this.clock.setInterval(() => this.pushLeaderboard(), LEADERBOARD_PUSH_MS)
+    this.clock.setInterval(() => this.checkAfk(Date.now()), AFK.checkSec * 1000)
     this.lastPlaytimeTick = Date.now()
     this.clock.setInterval(() => this.tickPlaytime(), PLAYTIME_TICK_MS)
   }
@@ -109,6 +119,8 @@ class GameRoom extends Room {
     if (!session) return
     session.client = client
     session.reconnection = null
+    // A network blip is not the player walking away: don't remove them as they return.
+    session.markActive(Date.now())
     // Private messages sent while they were away are lost; resend what matters.
     this.sendWelcome(session, Date.now())
   }
@@ -129,11 +141,37 @@ class GameRoom extends Room {
     console.error(`[game] room ${this.roomId} ${methodName} failed:`, error)
   }
 
-  /** Disconnects a session, including one that is mid-reconnect. */
-  kick(session) {
+  /** Disconnects a session, including one that is mid-reconnect. It gets no reconnection window. */
+  kick(session, code = REPLACED) {
     session.kicked = true
-    if (session.reconnection) session.reconnection.reject(new Error('replaced'))
-    else session.client.leave(REPLACED)
+    if (session.reconnection) session.reconnection.reject(new Error('kicked'))
+    else session.client.leave(code)
+  }
+
+  /**
+   * Removes players who have been away too long, so their slot (and any table they
+   * hold) goes to someone who wants to play. DATA.afk.warnSec without a sign of life
+   * brings an "Are you still there?" prompt; DATA.afk.kickSec removes them. Leaving
+   * frees the slot at once: a full room unlocks for the matchmaker.
+   */
+  checkAfk(now) {
+    for (const session of this.sessions.values()) {
+      // Dropped players are already on the reconnection clock.
+      if (session.kicked || session.reconnection) continue
+      if (session.seat && DUEL_PHASES.has(session.seat.table.phase)) {
+        session.markActive(now)
+        continue
+      }
+      const idle = now - session.lastActiveAt
+      if (idle >= AFK.kickSec * 1000) {
+        console.log(`[game] room ${this.roomId}: removing AFK player "${session.player.name}" after ${Math.round(idle / 1000)}s`)
+        session.send('afk', { kickSec: AFK.kickSec })
+        this.kick(session, AFK_KICKED)
+      } else if (idle >= AFK.warnSec * 1000 && !session.afkWarned) {
+        session.afkWarned = true
+        session.send('afkWarn', { kickInMs: AFK.kickSec * 1000 - idle })
+      }
+    }
   }
 
   sendWelcome(session, now) {

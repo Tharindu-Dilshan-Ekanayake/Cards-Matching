@@ -65,7 +65,7 @@ function configureApp(app) {
     res.json({ ok: true })
   })
 
-  /** Live room occupancy, handy while testing the 20-player cap. */
+  /** Live room occupancy, handy while testing the player cap. */
   app.get('/api/rooms', async (_req, res) => {
     const rooms = await matchMaker.query({ name: DATA.bloxity.roomName })
     res.json(rooms.map((r) => ({ id: r.roomId, players: r.clients, max: r.maxClients, locked: r.locked })))
@@ -148,7 +148,10 @@ const gameServer = new Server({
 // NOTE: like /api/legion-auth above, the game trusts the Bloxity user id the client
 // sends when joining (see Session.resolveIdentity). Verify the Bloxity token there
 // before real money or leaderboards depend on it.
-gameServer.define(DATA.bloxity.roomName, GameRoom)
+// New players fill the busiest room that still has space, so they land among other
+// players rather than in an empty lobby. (AFK players are removed, so a busy room is
+// a lively one: see GameRoom.checkAfk.)
+gameServer.define(DATA.bloxity.roomName, GameRoom).sortBy({ clients: -1 })
 // Colyseus owns SIGINT/SIGTERM: it lets every room run onLeave (which banks
 // progress) before this final save.
 gameServer.onShutdown(async () => {

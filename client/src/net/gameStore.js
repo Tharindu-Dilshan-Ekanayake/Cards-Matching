@@ -10,8 +10,10 @@ import { create } from 'zustand'
 let toastId = 0
 
 export const useGame = create((set, get) => ({
-  /** 'connecting' | 'online' | 'offline' */
+  /** 'connecting' | 'online' | 'offline' | 'failed' | 'afk' (removed for being away) */
   status: 'connecting',
+  /** The server's "Are you still there?": { until } (epoch ms when you'd be removed), or null. */
+  afkWarn: null,
   selfId: null,
   roomId: null,
   capacity: 20,
@@ -37,13 +39,13 @@ export const useGame = create((set, get) => ({
    */
   localFlips: null,
   /**
-   * Private reveals (Peek / Hint): { kind, cards: [{ i, f }], until, table } shown
+   * Private reveals (Peek): { kind, cards: [{ i, f }], until, table } shown
    * to this player only.
    */
   reveal: null,
   /** The "Quit the duel?" popup is open (only while a duel is under way). */
   quitAsk: false,
-  /** Full-screen edge glow at your table: { kind: 'zap' | 'golden' | 'match' | 'freeze', at, delay, until } (ms). */
+  /** Full-screen edge glow at your table: { kind: 'zap' | 'golden' | 'match', at, delay, until } (ms). */
   flash: null,
   /** Level-up celebration: { level, reward, title, until }. */
   levelUp: null,

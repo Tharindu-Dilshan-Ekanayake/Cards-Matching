@@ -140,8 +140,8 @@ function PowersLeft({ used, align }) {
   )
 }
 
-/** One side of the duel bar: title, name, points, turn / frozen badges, a speech bubble. */
-function DuelistCard({ player, isSelf, score, active, frozen, used, speech, align }) {
+/** One side of the duel bar: title, name, points, power-ups left, a speech bubble. */
+function DuelistCard({ player, isSelf, score, active, used, speech, align }) {
   const title = titleById(player?.title)
   const left = align === 'left'
   return (
@@ -173,11 +173,6 @@ function DuelistCard({ player, isSelf, score, active, frozen, used, speech, alig
           </span>
           <span className={`mt-0.5 flex items-center gap-1.5 ${left ? '' : 'flex-row-reverse'}`}>
             <PowersLeft used={used} align={align} />
-            {frozen && (
-              <span className="stroke-thin pop-in whitespace-nowrap rounded-full border-2 border-black/70 bg-gradient-to-b from-[#bdf0ff] to-[#4fb8ff] px-1.5 text-[0.65rem] font-bold leading-snug text-white">
-                ❄️ FROZEN
-              </span>
-            )}
           </span>
         </div>
       </div>
@@ -250,7 +245,6 @@ function DuelBar({ match, now }) {
         isSelf
         score={match.myScore}
         active={turn && match.turn === 'me'}
-        frozen={match.frozen}
         used={match.used}
         speech={speechOf(selfId, now)}
         align="left"
@@ -260,7 +254,6 @@ function DuelBar({ match, now }) {
         player={them}
         score={match.theirScore}
         active={turn && match.turn === 'them'}
-        frozen={match.theirFrozen}
         used={match.theirUsed}
         speech={speechOf(match.opponent, now)}
         align="right"
@@ -313,22 +306,21 @@ function BoardBanner({ match }) {
   )
 }
 
-/** While a Peek or Hint is showing: a note that only you can see it. */
+/** While a Peek is showing: a note that only you can see it. */
 function RevealNote() {
   const reveal = useGame((s) => s.reveal)
   const now = useNow(200)
   if (!reveal || reveal.until < now) return null
-  const hint = reveal.kind === 'hint'
   return (
     <div className="pointer-events-none absolute left-1/2 top-[28%] z-30 -translate-x-1/2">
       <span className="stroke-thin pop-in block whitespace-nowrap rounded-full border-2 border-black/70 bg-gradient-to-b from-[#c79bff] to-[#7b3cff] px-3 py-1 text-base font-bold text-white">
-        {hint ? '💡 HINT: those two are a pair!' : '👁️ PEEK: only you can see it!'}
+        👁️ PEEK: only you can see it!
       </span>
     </div>
   )
 }
 
-/** The four power-ups, bottom centre: each once per duel, on your turn. Keys 1-4. */
+/** The power-ups, bottom centre: each once per duel, on your turn. Keys 1, 2. */
 function PowerBar({ match }) {
   // Re-render as flips / turns change what can be used.
   useGame((s) => s.localFlips)
@@ -386,7 +378,7 @@ function PowerBar({ match }) {
 
 /**
  * A soft glow around the screen's edges at your table: a pair (green), the golden
- * pair (gold), a freeze (ice blue), a jolt: a fade in and out, never a hard flash.
+ * pair (gold), a jolt (blue): a fade in and out, never a hard flash.
  */
 function ScreenFlash() {
   const flash = useGame((s) => s.flash)

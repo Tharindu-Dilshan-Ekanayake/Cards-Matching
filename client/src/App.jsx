@@ -4,6 +4,7 @@ import { platform, setAdScreen, usePlatform } from './bloxity/platform'
 import { isPlayingPhase, useGame } from './net/gameStore'
 import { renderStats } from './net/liveState'
 import { useConnection } from './net/useConnection'
+import AfkNotice from './ui/AfkNotice'
 import HUD from './ui/HUD'
 import InteractPrompt from './ui/InteractPrompt'
 import LoadingScreen from './ui/LoadingScreen'
@@ -80,6 +81,7 @@ function App() {
       <MatchUI />
       <InteractPrompt />
       <Toasts />
+      <AfkNotice />
       {touch && <TouchControls />}
       {showFps && <FpsReadout />}
       {modal && (

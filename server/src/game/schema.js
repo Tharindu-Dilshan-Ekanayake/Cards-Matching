@@ -5,7 +5,7 @@ const { schema, t } = require('@colyseus/schema')
  * client at the room's patch rate.
  *
  * Only public information lives here. The faces of hidden cards, a player's private
- * peeks and hints, their duel view and their profile (cash, inventory) go to that
+ * peeks, their duel view and their profile (cash, inventory) go to that
  * player alone as messages.
  */
 
@@ -64,9 +64,6 @@ const TableState = schema(
     owners: t.string(),
     /** The two cards being shown are a pair. */
     hit: t.boolean(),
-    /** Each seat's next turn will be skipped (frozen). */
-    frz0: t.boolean(),
-    frz1: t.boolean(),
   },
   'Table',
 )

@@ -44,9 +44,8 @@ const code = (face) => String.fromCharCode(97 + face)
  * take turns flipping two cards; both see every flip. A pair scores and the same
  * player goes again; a miss turns both back and passes the turn. A turn lasts
  * DATA.cards.turnSec. Each player may use each power-up once per duel, on their own
- * turn: Peek (one hidden card, to them alone), Hint (a matching pair, to them
- * alone), Shuffle (every hidden card swaps places) and Freeze (the opponent's next
- * turn is skipped). The duel ends as soon as the leader can no longer be caught.
+ * turn: Peek (one hidden card, to them alone) and Shuffle (every hidden card swaps
+ * places). The duel ends as soon as the leader can no longer be caught.
  *
  * Phases:
  *   waiting   - zero or one player seated
@@ -94,8 +93,6 @@ class Table {
     this.combo = 0
     /** The reveal on show is a pair. */
     this.hit = false
-    /** Seats whose next turn is skipped (a Freeze). */
-    this.frozen = [false, false]
     /** Power-ups each seat has used this duel. */
     this.used = [new Set(), new Set()]
     /** Turns in a row each seat let run out without flipping a card. */
@@ -184,22 +181,10 @@ class Table {
     this.sync(now)
   }
 
-  /** The turn goes to the other player, unless they are frozen: then it comes straight back. */
+  /** The turn goes to the other player. */
   passTurn(now) {
-    const next = 1 - this.turn
     this.combo = 0
-    if (this.frozen[next]) {
-      this.frozen[next] = false
-      const frozen = this.seats[next]
-      if (frozen) {
-        this.room.bubble(frozen, 'FROZEN! 🥶')
-        this.room.broadcast('fx', { kind: 'frozen', id: frozen.id })
-      }
-      for (const s of this.seats) s?.toast(`❄️ ${frozen?.player.name ?? 'They'} is frozen: turn skipped!`)
-      this.startTurn(this.turn, now)
-      return
-    }
-    this.startTurn(next, now)
+    this.startTurn(1 - this.turn, now)
   }
 
   canAct(i, now) {
@@ -327,17 +312,6 @@ class Table {
       if (!hidden.length) return session.toast('No hidden cards to peek at')
       const p = hidden[randomInt(hidden.length)]
       session.send('reveal', { kind: 'peek', ms: C.peekMs, cards: [{ i: p, f: code(this.faces[p]) }] })
-    } else if (id === 'hint') {
-      const byFace = new Map()
-      for (const p of hidden) byFace.set(this.faces[p], [...(byFace.get(this.faces[p]) || []), p])
-      const pairs = [...byFace.values()].filter((ps) => ps.length === 2)
-      if (!pairs.length) return session.toast('No pair left to hint')
-      const pair = pairs[randomInt(pairs.length)]
-      session.send('reveal', {
-        kind: 'hint',
-        ms: C.hintMs,
-        cards: pair.map((p) => ({ i: p, f: code(this.faces[p]) })),
-      })
     } else if (id === 'shuffle') {
       if (hidden.length < 2) return session.toast('Not enough hidden cards to shuffle')
       const mixed = shuffleInPlace(hidden.map((p) => this.faces[p]))
@@ -346,11 +320,6 @@ class Table {
       })
       this.room.broadcast('fx', { kind: 'shuffle', table: this.id, id: session.id })
       opponent?.toast(`🔀 ${session.player.name} shuffled the cards!`)
-    } else if (id === 'freeze') {
-      if (!opponent) return
-      this.frozen[1 - i] = true
-      this.room.broadcast('fx', { kind: 'freeze', table: this.id, id: opponent.id, by: session.id })
-      opponent.toast(`❄️ ${session.player.name} froze you: your next turn is skipped!`)
     }
 
     this.used[i].add(id)
@@ -474,8 +443,6 @@ class Table {
       combo: this.turn === i ? this.combo : 0,
       used: [...this.used[i]],
       theirUsed: [...this.used[o]],
-      frozen: this.frozen[i],
-      theirFrozen: this.frozen[o],
       won: ended && this.winner === i,
       opponent: this.seats[o]?.id ?? null,
     }
@@ -500,8 +467,6 @@ class Table {
     st.board = this.boardString()
     st.owners = this.ownerString()
     st.hit = this.phase === 'reveal' && this.hit
-    st.frz0 = this.frozen[0]
-    st.frz1 = this.frozen[1]
     this.seats.forEach((s, i) => s?.send('match', { match: this.privateState(i, now) }))
   }
 }

@@ -30,3 +30,8 @@ export function send(msg) {
 export function retryConnection() {
   socket?.retryConnection()
 }
+
+/** "I'm here!" on the AFK warning. */
+export function confirmPresence() {
+  socket?.confirmPresence()
+}

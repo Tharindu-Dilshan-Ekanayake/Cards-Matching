@@ -60,6 +60,25 @@ const PAVE = {
  * then paths), each FLOOR.plazaStep higher, so overlapping tiles never flicker
  * against each other.
  */
+/**
+ * Tables that share an x line form an avenue (one long felt strip); a table on its
+ * own (the centre-stage table behind the house of cards) gets its own felt pad.
+ */
+const AVENUE_XS = [...new Set(DATA.tables.map((t) => t.x))].filter(
+  (x) => DATA.tables.filter((t) => t.x === x).length > 1,
+)
+const SOLO_TABLES = DATA.tables.filter((t) => !AVENUE_XS.includes(t.x))
+/** Felt round a table: across its width, and along its seats (chairs included). */
+const FELT_W = TABLE.width + 2.2
+const FELT_D = TABLE.depth + TABLE.seatZ * 2 + 2.2
+
+function avenueSpan(x) {
+  const zs = DATA.tables.filter((t) => t.x === x).map((t) => t.z)
+  const top = Math.min(...zs) - 2.2
+  const bottom = Math.max(...zs) + 2.2
+  return { z: (top + bottom) / 2, len: bottom - top }
+}
+
 export function createPlazaGeometry(tile) {
   const positions = []
   const colors = []
@@ -137,7 +156,8 @@ export function createPlazaGeometry(tile) {
   }
 
   // Layer 2: the felt disc and gold ring under the house of cards, four gold pips
-  // round it, and the two avenues of tables in teal felt with gold edges.
+  // round it, the two avenues of tables in teal felt with gold edges, and the
+  // centre-stage table's own felt pad.
   layer(2)
   const ring = 4.4
   arc(TOWER.x, TOWER.z, 0, ring, 0, Math.PI * 2, 40, PAVE.towerFelt)
@@ -146,25 +166,21 @@ export function createPlazaGeometry(tile) {
     const [px, pz] = polar(TOWER.x, TOWER.z, ring + 1.3, Math.PI / 4 + (k * Math.PI) / 2)
     diamond(px, pz, 0.42, 0.62, PAVE.towerPip)
   }
-  for (const x of [...new Set(DATA.tables.map((t) => t.x))]) {
-    const zs = DATA.tables.filter((t) => t.x === x).map((t) => t.z)
-    const top = Math.min(...zs) - 2.6
-    const bottom = Math.max(...zs) + 2.6
-    const w = TABLE.depth + TABLE.seatZ * 2 + 2.2
-    rect(x, (top + bottom) / 2, w + 0.5, bottom - top + 0.5, PAVE.avenueEdge)
+  for (const x of AVENUE_XS) {
+    const { z, len } = avenueSpan(x)
+    rect(x, z, FELT_D + 0.5, len + 0.5, PAVE.avenueEdge)
   }
+  for (const t of SOLO_TABLES) rect(t.x, t.z, FELT_W + 0.5, FELT_D + 0.5, PAVE.avenueEdge, t.ry)
 
   // Layer 3: the felt itself (inside its gold edge), the entrance path from the spawn
   // point with ruby edges beside it (not over it), and the spokes joining the pads
   // to the square.
   layer(3)
-  for (const x of [...new Set(DATA.tables.map((t) => t.x))]) {
-    const zs = DATA.tables.filter((t) => t.x === x).map((t) => t.z)
-    const top = Math.min(...zs) - 2.6
-    const bottom = Math.max(...zs) + 2.6
-    const w = TABLE.depth + TABLE.seatZ * 2 + 2.2
-    rect(x, (top + bottom) / 2, w, bottom - top, PAVE.avenue)
+  for (const x of AVENUE_XS) {
+    const { z, len } = avenueSpan(x)
+    rect(x, z, FELT_D, len, PAVE.avenue)
   }
+  for (const t of SOLO_TABLES) rect(t.x, t.z, FELT_W, FELT_D, PAVE.avenue, t.ry)
   const pathStart = z1 + trim - 0.2
   const pathEnd = SPAWN[2] + 3
   const pathMid = (pathStart + pathEnd) / 2

@@ -4,6 +4,17 @@ const profiles = require('./profiles')
 const HALF = DATA.world.half
 const EMOTE_COOLDOWN_MS = 1500
 const ANIM_COOLDOWN_MS = 800
+/**
+ * Messages that only a present player sends: any of them resets the AFK timer.
+ * `pos` counts only when the player actually moved (it is also a 1 s heartbeat);
+ * `avatar` is sent by the platform, not the player.
+ */
+const ACTIVITY = new Set([
+  'active', 'sit', 'leave', 'flip', 'power', 'emote', 'buy', 'equip', 'claimQuest', 'claimDaily',
+  'claimGift', 'anim',
+])
+/** How far a `pos` update must move (or turn) to count as the player being there. */
+const MOVED = 0.05
 /** Bloxity emote catalogue ids are 24-character hex strings. */
 const ANIM_ID = /^[a-f0-9]{24}$/i
 
@@ -68,6 +79,10 @@ class Session {
     this.seat = null
     this.lastEmoteAt = 0
     this.lastAnimAt = 0
+    /** Last sign of a real player (input, movement, an action, a duel), epoch ms. */
+    this.lastActiveAt = now
+    /** The "are you still there?" warning has been sent and not yet answered. */
+    this.afkWarned = false
     /** Verified Bloxity account id, or '' for a guest. */
     this.userId = identity.userId
 
@@ -105,6 +120,15 @@ class Session {
     this.send('profile', { profile: this.profileView(now) })
   }
 
+  /** The player is here: restart their AFK timer (and take back any warning). */
+  markActive(now) {
+    this.lastActiveAt = now
+    if (this.afkWarned) {
+      this.afkWarned = false
+      this.send('afkClear', {})
+    }
+  }
+
   /** Back to the lobby spawn point (after losing a duel). */
   respawn() {
     const [x, y, z] = DATA.world.spawn
@@ -135,9 +159,13 @@ class Session {
   /** Routes one client message. `msg` is untrusted. */
   handle(type, msg, now) {
     msg = msg && typeof msg === 'object' ? msg : {}
+    if (ACTIVITY.has(type)) this.markActive(now)
     switch (type) {
       case 'pos':
-        return this.onPos(msg)
+        if (this.onPos(msg)) this.markActive(now)
+        return undefined
+      case 'active':
+        return undefined
       case 'sit':
         return this.onSit(msg, now)
       case 'leave':
@@ -167,15 +195,23 @@ class Session {
     }
   }
 
+  /** Applies a position update. Returns true if the player really moved or turned. */
   onPos(msg) {
-    if (this.seat) return
+    if (this.seat) return false
     const p = this.player
-    p.x = clamp(finite(msg.x, p.x), -HALF, HALF)
-    p.y = clamp(finite(msg.y, 0), -5, 20)
-    p.z = clamp(finite(msg.z, p.z), -HALF, HALF)
-    p.ry = finite(msg.ry)
+    const x = clamp(finite(msg.x, p.x), -HALF, HALF)
+    const y = clamp(finite(msg.y, 0), -5, 20)
+    const z = clamp(finite(msg.z, p.z), -HALF, HALF)
+    const ry = finite(msg.ry)
+    const moved =
+      Math.abs(x - p.x) > MOVED || Math.abs(y - p.y) > MOVED || Math.abs(z - p.z) > MOVED || Math.abs(ry - p.ry) > MOVED
+    p.x = x
+    p.y = y
+    p.z = z
+    p.ry = ry
     p.s = clamp(finite(msg.s), 0, 20)
     p.g = Boolean(msg.g)
+    return moved
   }
 
   onSit(msg, now) {

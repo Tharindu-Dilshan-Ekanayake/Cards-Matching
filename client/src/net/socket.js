@@ -3,7 +3,7 @@ import { Callbacks, Client } from '@colyseus/sdk'
 import { sfx } from '../audio/sfx'
 import { boxityEnv } from '../bloxity/env'
 import { loadEmoteCatalog, onPlatformEvent, platform } from '../bloxity/platform'
-import { CARD_Y, cardLocal, DATA, SEATED_BACK, seatPosition, SPAWN, tableById, tableLocal } from '../game/layout'
+import { CARD_Y, cardLocal, DATA, seatPosition, SPAWN, tableById, tableLocal } from '../game/layout'
 import { getSettings } from '../game/quality'
 import { isPlayingPhase, useGame } from './gameStore'
 import {
@@ -40,8 +40,6 @@ const ROOM_NAME = DATA.bloxity.roomName
 const HOSTING_ID = import.meta.env.VITE_BLOXITY_HOSTING_ID || ''
 const POS_INTERVAL_MS = 100
 const HEARTBEAT_MS = 1000
-/** Roughly where a seated player's head is. */
-const SEATED_HEAD_Y = 1.3
 /** How far back from the table (against sideways 1) an ejected player flies. */
 const FLY_BACK = 0.8
 /** The server ejects the loser this long after the result; the winner dances after it. */
@@ -53,6 +51,10 @@ const GIVE_UP_MS = 60000
 const INITIAL_SYNC_MS = 1500
 /** The server's close code when this account joined from another window. */
 const KICKED_REPLACED = 4100
+/** The server's close code for a player removed for being away: never rejoin by ourselves. */
+const KICKED_AFK = 4101
+/** Real input tells the server the player is here, at most this often (more while warned). */
+const ACTIVE_PING_MS = 10000
 /** Consented leave (we called room.leave()). */
 const CONSENTED = 4000
 
@@ -73,6 +75,9 @@ let deepLinkRoomId = new URLSearchParams(window.location.search).get('roomId')
 /** After signing in mid-game: the room to rejoin with the new identity. */
 let rejoinTarget = null
 const lastSent = { x: 0, y: 0, z: 0, ry: 0, s: 0, g: true, at: 0 }
+/** Last real input (key, pointer, touch, wheel, focus) and last "I'm here" sent, epoch ms. */
+let lastInputAt = Date.now()
+let lastActivePing = 0
 
 const viaMatchmaker = () => Boolean(HOSTING_ID) && boxityEnv().env !== 'local'
 const toWs = (url) => url.replace(/^http/i, 'ws')
@@ -197,7 +202,8 @@ async function join() {
       deepLinkRoomId = null
       joined = await joinDeepLink(id, target)
     }
-    // joinOrCreate fills a room to its 20 players before opening the next one.
+    // joinOrCreate puts us in the busiest room with space (see server.js), opening a
+    // new one only when every room is full.
     joined ||= await new Client(target.url).joinOrCreate(ROOM_NAME, hello)
 
     if (token !== joinToken) {
@@ -306,6 +312,12 @@ function attach(r) {
     platform.updateRoom('')
     resetWorld()
     useGame.setState({ status: 'offline' })
+    if (code === KICKED_AFK) {
+      // Away too long: the slot went to someone else. Rejoining by ourselves would
+      // just take it back, so wait for the player's "Play again".
+      useGame.setState({ status: 'afk', afkWarn: null })
+      return
+    }
     if (code === KICKED_REPLACED || code === CONSENTED) return
     // Closed unexpectedly (e.g. its pod is being replaced): resolve again and rejoin.
     scheduleRejoin()
@@ -351,8 +363,42 @@ onPlatformEvent('chat', (m) => {
   if (id) setBubble(id, m.text, m.seconds * 1000)
 })
 
-onPlatformEvent('breakStart', () => sfx.setMuted(true))
-onPlatformEvent('breakEnd', () => sfx.setMuted(false))
+/* ---- Presence (AFK) ----------------------------------------------------------------- */
+
+/** Tells the server the player is here (throttled; at once while the AFK warning shows). */
+function noteInput(force = false) {
+  const now = Date.now()
+  lastInputAt = now
+  const warned = Boolean(useGame.getState().afkWarn)
+  if (warned) useGame.setState({ afkWarn: null })
+  if (!force && !warned && now - lastActivePing < ACTIVE_PING_MS) return
+  lastActivePing = now
+  send({ t: 'active' })
+}
+
+const onInput = () => noteInput()
+for (const type of ['keydown', 'pointerdown', 'pointermove', 'wheel', 'touchstart']) {
+  window.addEventListener(type, onInput, { capture: true, passive: true })
+}
+window.addEventListener('focus', onInput)
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') noteInput()
+})
+
+/** "Are you still there?" from the server's AFK check. */
+export function confirmPresence() {
+  noteInput(true)
+}
+
+// An ad break is not the player walking away.
+onPlatformEvent('breakStart', () => {
+  sfx.setMuted(true)
+  noteInput(true)
+})
+onPlatformEvent('breakEnd', () => {
+  sfx.setMuted(false)
+  noteInput(true)
+})
 
 function startPositionUpdates() {
   clearInterval(posTimer)
@@ -463,8 +509,6 @@ function applyTable(id, t) {
     owners: t.owners || EMPTY_OWNERS,
     /** The two cards being shown are a pair. */
     hit: t.hit,
-    /** Each seat's next turn will be skipped. */
-    frozen: [t.frz0, t.frz1],
   }
   indexSeats(table)
   useGame.setState((s) => ({ tables: { ...s.tables, [id]: table } }))
@@ -497,14 +541,6 @@ function seatOf(id) {
   return remoteSeats.get(id) || null
 }
 
-/** Where a seated player's head is, roughly: over the seat, leant back a little. */
-function headOf(seat) {
-  return {
-    x: seat.x - Math.sin(seat.ry) * SEATED_BACK,
-    y: SEATED_HEAD_Y,
-    z: seat.z - Math.cos(seat.ry) * SEATED_BACK,
-  }
-}
 
 /** The server's confirmations come as toasts; each kind gets its sound. */
 function playToastSound(text) {
@@ -515,18 +551,6 @@ function playToastSound(text) {
 
 /** actionFx is keyed by session id, except the local player's entry. */
 const fxKey = (id) => (id === useGame.getState().selfId ? SELF_ANCHOR : id)
-
-/** A seated player is jolted (frozen: their turn was skipped): sparks off their head. */
-function playZap(id, now) {
-  const seat = seatOf(id)
-  if (!seat) return
-  const key = fxKey(id)
-  actionFx.set(key, { ...actionFx.get(key), zap: now, side: Math.random() < 0.5 ? -1 : 1 })
-  if (getSettings().particles) {
-    const head = headOf(seat)
-    effectQueue.push({ kind: 'sparks', x: head.x, y: head.y, z: head.z })
-  }
-}
 
 /** World position of card `card` on table `tableId`, for particles. */
 function cardWorld(tableId, card) {
@@ -599,7 +623,7 @@ const handlers = {
     })
   },
 
-  /** Peek / Hint: cards shown to this player only, for a moment. */
+  /** Peek: a card shown to this player only, for a moment. */
   reveal(msg) {
     const { match } = useGame.getState()
     if (!match || !Array.isArray(msg.cards)) return
@@ -623,8 +647,8 @@ const handlers = {
 
   /**
    * Table actions anywhere in the room, so every duel looks alive from the square:
-   * a flip (the hand reaches for a card), a pair or a miss, a shuffle, a freeze, a
-   * jolt (frozen: turn skipped) or an ejection (lost the duel).
+   * a flip (the hand reaches for a card), a pair or a miss, a shuffle or an
+   * ejection (lost the duel).
    */
   fx(msg) {
     const now = Date.now()
@@ -664,26 +688,33 @@ const handlers = {
       boardFx.set(msg.table, { ...boardFx.get(msg.table), shuffleAt: now })
       return
     }
-    if (msg.kind === 'freeze') {
-      if (atMyTable) {
-        sfx.freeze()
-        if (msg.id === selfId) flash('freeze', 1100)
-      }
-      return
-    }
-    if (msg.kind === 'frozen') {
-      playZap(msg.id, now)
-      if (msg.id === selfId) {
-        sfx.zap()
-        flash('freeze', 1100)
-      }
-      return
-    }
     if (msg.kind === 'eject') playEject(msg.id, now)
   },
 
   bubble(msg) {
     setBubble(msg.id, msg.text)
+  },
+
+  /**
+   * The server hasn't seen us for a while. Input in the last moment may simply not
+   * have been sent yet (pings are throttled): answer for it. Otherwise ask.
+   */
+  afkWarn(msg) {
+    if (Date.now() - lastInputAt < 5000) {
+      noteInput(true)
+      return
+    }
+    sfx.yourTurn()
+    useGame.setState({ afkWarn: { until: Date.now() + (msg.kickInMs || 30000) } })
+  },
+
+  afkClear() {
+    useGame.setState({ afkWarn: null })
+  },
+
+  /** About to be removed for being away; the close (KICKED_AFK) follows. */
+  afk() {
+    sfx.error()
   },
 
   toast(msg) {

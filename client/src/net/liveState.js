@@ -53,7 +53,7 @@ export const effectQueue = []
 /**
  * Seated players' table actions, for their pose (see seatPose): id (SELF_ANCHOR for
  * the local player) -> epoch ms each started — `press` (reaching for a card), `zap`
- * (frozen: turn skipped, with `side`, which way it jolts them), `fly` (ejected from the
+ * (a jolt, with `side`, which way it knocks them), `fly` (ejected from the
  * chair, towards `ax`, `az`) and `danceAt` (when the winner may start dancing).
  */
 export const actionFx = new Map()
