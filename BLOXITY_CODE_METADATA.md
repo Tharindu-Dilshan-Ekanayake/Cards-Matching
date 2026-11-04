@@ -1,5 +1,5 @@
 ---
-gameSlug: slap-chips
+gameSlug: cards-matching
 clientDir: client
 buildCommand: npm ci && npm run build
 distDir: client/dist
