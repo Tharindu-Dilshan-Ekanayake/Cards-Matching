@@ -2,25 +2,22 @@ import {
   BufferAttribute,
   CanvasTexture,
   Color,
-  ExtrudeGeometry,
   LatheGeometry,
   OctahedronGeometry,
-  Path,
   RepeatWrapping,
-  Shape,
   SRGBColorSpace,
   TorusGeometry,
   Vector2,
 } from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
-import { GEARS } from './layout'
-import { BRASS, CLOUD_SEA, ROCK } from './sceneStyle'
+import { GIANT_CARDS } from './layout'
+import { BRASS, CLOUD_SEA, ROCK, SUITS } from './sceneStyle'
 
 /**
  * Geometry and textures for the floating island: its rocky underside (shared with
- * the little islands in the sky), the brass railing, the gears, the crystals and
- * the sea of clouds below.
+ * the little islands in the sky), the gold railing, the giant cards' plinths, the
+ * crystals and the sea of clouds below.
  */
 
 /** Deterministic 0..1 noise, so the rocks look the same on every load. */
@@ -84,7 +81,7 @@ export function createIslandRockGeometry() {
   return geometry
 }
 
-/** Two brass rails round the island at `radius`, lying flat, in one geometry. */
+/** Two gold rails round the island at `radius`, lying flat, in one geometry. */
 export function createRailGeometry(radius) {
   const rings = [0.62, 1.12].map((y) => new TorusGeometry(radius, y > 1 ? 0.075 : 0.055, 6, 128).rotateX(Math.PI / 2).translate(0, y, 0))
   const merged = mergeGeometries(rings)
@@ -99,45 +96,6 @@ export function railPosts(radius) {
     const a = (i / count) * Math.PI * 2
     return { p: [Math.sin(a) * radius, 0.6, Math.cos(a) * radius], ry: a }
   })
-}
-
-/**
- * A gear of radius 1 in the XY plane (facing +Z), 12 teeth, a hub and six round
- * windows through it, extruded 0.22 thick and centred on its depth.
- */
-export function createGearGeometry() {
-  const TEETH = 12
-  const tip = 1
-  const root = 0.82
-  const shape = new Shape()
-  for (let k = 0; k < TEETH; k += 1) {
-    const a = (k / TEETH) * Math.PI * 2
-    const step = (Math.PI * 2) / TEETH
-    const pts = [
-      [root, a],
-      [tip, a + step * 0.12],
-      [tip, a + step * 0.42],
-      [root, a + step * 0.54],
-    ]
-    pts.forEach(([r, t], n) => {
-      const x = Math.cos(t) * r
-      const y = Math.sin(t) * r
-      if (k === 0 && n === 0) shape.moveTo(x, y)
-      else shape.lineTo(x, y)
-    })
-  }
-  shape.closePath()
-  const hub = new Path()
-  hub.absarc(0, 0, 0.14, 0, Math.PI * 2, true)
-  shape.holes.push(hub)
-  for (let k = 0; k < 6; k += 1) {
-    const a = (k / 6) * Math.PI * 2
-    const w = new Path()
-    w.absarc(Math.cos(a) * 0.5, Math.sin(a) * 0.5, 0.16, 0, Math.PI * 2, true)
-    shape.holes.push(w)
-  }
-  const geometry = new ExtrudeGeometry(shape, { depth: 0.22, bevelEnabled: false, curveSegments: 8 })
-  return geometry.translate(0, 0, -0.11)
 }
 
 /**
@@ -165,7 +123,7 @@ const CLUSTER = [
   [-0.42, -0.24, 0.72, -0.1, -0.42],
   [0.08, 0.5, 0.52, 0.45, 0.3],
 ]
-export const CRYSTAL_COLORS = ['#5ff3ff', '#c27bff', '#ff7ad9']
+export const CRYSTAL_COLORS = [SUITS.ruby, SUITS.gold, SUITS.teal, SUITS.violet]
 
 /** Every crystal of every cluster: { p, s, rx, rz, c }. */
 export function crystalItems(clusters, y = 0) {
@@ -179,7 +137,7 @@ export function crystalItems(clusters, y = 0) {
   return items
 }
 
-/** Soft puffs of cloud on a pale lavender sea, tiling. 256 px. */
+/** Soft puffs of cloud on a pale rose sea, tiling. 256 px. */
 export function createCloudSeaTexture() {
   const size = 256
   const canvas = document.createElement('canvas')
@@ -209,20 +167,20 @@ export function createCloudSeaTexture() {
   return texture
 }
 
-/** Gears face the island's middle; each spins in its own plane (see Island). */
-export const GEAR_ITEMS = GEARS.map(([x, z, r]) => ({ x, z, r, y: r + 0.55, ry: Math.atan2(-x, -z) }))
+/**
+ * The giant cards round the edge (see CardTower): each turns slowly above a stepped
+ * stone plinth. `y` is the card's centre height, `w` its width.
+ */
+export const GIANT_CARD_ITEMS = GIANT_CARDS.map(([x, z, w]) => ({ x, z, w, y: 1.05 + w / 2 }))
 
-/** Stone blocks the gears stand on, with a post holding each axle. */
-export function gearStandBoxes() {
+/** Each giant card's plinth: cream stone steps, a gold rim and a navy cap. */
+export function giantCardStandBoxes() {
   const boxes = []
-  for (const { x, z, r, y, ry } of GEAR_ITEMS) {
-    const nx = Math.sin(ry)
-    const nz = Math.cos(ry)
-    boxes.push({ p: [x, 0.28, z], s: [r * 1.3, 0.56, 1.3], c: '#5b5476', ry })
-    boxes.push({ p: [x, 0.62, z], s: [r * 1.1, 0.12, 1.1], c: BRASS.rail, ry })
-    // The axle's post stands behind the gear (away from the square), out of its face.
-    boxes.push({ p: [x - nx * 0.34, y / 2 + 0.3, z - nz * 0.34], s: [0.26, y - 0.4, 0.26], c: BRASS.post, ry })
-    boxes.push({ p: [x, y, z], s: [0.42, 0.42, 0.86], c: '#2c2840', ry })
+  for (const { x, z, w } of GIANT_CARD_ITEMS) {
+    const s = w * 0.62
+    boxes.push({ p: [x, 0.25, z], s: [s, 0.5, s], c: SUITS.cream, ry: Math.PI / 4 })
+    boxes.push({ p: [x, 0.56, z], s: [s * 0.86, 0.12, s * 0.86], c: BRASS.rail, ry: Math.PI / 4 })
+    boxes.push({ p: [x, 0.72, z], s: [s * 0.62, 0.22, s * 0.62], c: SUITS.navy, ry: Math.PI / 4 })
   }
   return boxes
 }

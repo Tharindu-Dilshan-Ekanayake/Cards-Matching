@@ -9,14 +9,14 @@ const H = ARCH.height
 export const X = ARCH.halfWidth
 export const Z = ARCH.z
 
-/** Slate pillars banded in brass, crystal tips: the gate of a sky island. */
-export const BLUE = '#3a3458'
-const BLUE_DARK = '#272240'
-export const GOLD = '#e2ad45'
-const STONE = '#6f6890'
-const WOOD = '#241f38'
-const CRYSTAL = '#5ff3ff'
-const CRYSTAL_PINK = '#ff7ad9'
+/** Ruby pillars banded in gold on cream stone, suit-coloured crystal tips: a card palace's gate. */
+export const BLUE = '#e8445e'
+const BLUE_DARK = '#b8283f'
+export const GOLD = '#ffc93d'
+const STONE = '#fff1de'
+const WOOD = '#2a2556'
+const CRYSTAL = '#22c7b2'
+const CRYSTAL_PINK = '#8b4dff'
 
 /** Sign board size (world units) and where it hangs. */
 export const BOARD_W = 6.8

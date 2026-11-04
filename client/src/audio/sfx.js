@@ -268,55 +268,75 @@ export const sfx = {
     voice(880, 0, 0.09, { gain: 0.22, glide: 820 })
     noise(0, 0.03, { freq: 2200, q: 3, gain: 0.1 })
   }),
-  /** A round's target is shown: a bright chord with a whoosh. */
+  /** The cards are dealt: a bright chord with a whoosh. */
   go: play(() => {
     noise(0, 0.35, { freq: 600, freqEnd: 3000, q: 0.8, gain: 0.08 })
     ;[C5, E5, G5, C6].forEach((f) => bell(f, 0.02, 0.9, 0.09))
   }),
-  /** The clock starts: a bright, high beep. */
-  beep: play(() => {
-    voice(1320, 0, 0.18, { type: 'square', filter: 3200, gain: 0.1 })
-    voice(1320, 0, 0.18, { gain: 0.12 })
+  /** Dealing: a quick ripple of card flicks. */
+  deal: play(() => {
+    for (let i = 0; i < 10; i += 1) noise(i * 0.07, 0.05, { freq: 2600 + i * 120, q: 1.4, gain: 0.07 })
   }),
-  /** The clock goes blind: a falling whoosh and a soft low "bwoop". */
-  blind: play(() => {
-    noise(0, 0.45, { freq: 3200, freqEnd: 400, q: 0.9, gain: 0.09 })
-    voice(520, 0.02, 0.4, { type: 'triangle', glide: 140, gain: 0.1 })
+  /** You flipped a card: a crisp paper flick. */
+  flip: play(() => {
+    noise(0, 0.07, { freq: 3200, freqEnd: 1800, q: 1.2, gain: 0.16 })
+    voice(760, 0, 0.06, { type: 'triangle', glide: 980, gain: 0.05 })
   }),
-  /** You stopped the clock: a chunky arcade-button clunk. */
-  press: play(() => {
-    thump(0, 180, 0.28)
-    noise(0, 0.05, { freq: 1600, q: 1.2, gain: 0.22 })
-    voice(900, 0.01, 0.07, { type: 'square', filter: 2000, gain: 0.05 })
+  /** Your opponent flipped one: a softer flick across the table. */
+  theirFlip: play(() => {
+    noise(0, 0.06, { freq: 2400, freqEnd: 1500, q: 1.2, gain: 0.09 })
   }),
-  /** Your opponent stopped theirs: a muffled click across the table. */
-  theirPress: play(() => {
-    noise(0, 0.04, { freq: 1200, q: 1.5, gain: 0.12 })
-    thump(0, 150, 0.12)
+  /** Your turn: a friendly double ding. */
+  yourTurn: play(() => {
+    bell(E6, 0, 0.3, 0.12)
+    bell(G6, 0.1, 0.5, 0.12)
   }),
-  /** The times are about to show: a short, building drum roll. */
-  drum: play(() => {
-    const hits = 7
-    for (let i = 0; i < hits; i += 1) {
-      const t = (i / hits) * 0.5 * (1 - i * 0.03)
-      thump(t, 150 + i * 8, 0.05 + i * 0.014)
-    }
+  /** The turn is running out: a soft wood tick. */
+  hurry: play(() => {
+    voice(1040, 0, 0.07, { gain: 0.14, glide: 980 })
   }),
-  /** You won the round: a friendly two-note chime. */
-  roundWin: play(() => {
-    bell(G5, 0, 0.4, 0.15)
-    bell(C6, 0.12, 0.7, 0.16)
+  /** You found a pair: a happy rising chime. */
+  match: play(() => {
+    bell(C6, 0, 0.35, 0.14)
+    bell(E6, 0.08, 0.4, 0.14)
+    bell(G6, 0.16, 0.7, 0.15)
   }),
-  /** You lost the round: the button zaps you, an electric buzz and a cartoon "boing". */
+  /** They found a pair: a muted two-note chime. */
+  theirMatch: play(() => {
+    bell(G5, 0, 0.3, 0.08)
+    bell(C6, 0.09, 0.45, 0.08)
+  }),
+  /** A miss: a soft cartoon "bonk-bonk", falling. */
+  miss: play(() => {
+    voice(330, 0, 0.12, { type: 'triangle', glide: 260, gain: 0.1 })
+    voice(247, 0.13, 0.2, { type: 'triangle', glide: 180, gain: 0.1 })
+  }),
+  /** The golden pair: a magical sparkle cascade. */
+  golden: play(() => {
+    ;[C6, E6, G6, C7, E6, C7].forEach((f, i) => bell(f, i * 0.06, 0.6, 0.11))
+    noise(0, 0.6, { filter: 'highpass', freq: 7000, freqEnd: 11000, gain: 0.04, reverb: 0.6 })
+  }),
+  /** Shuffle: a riffle of cards. */
+  shuffle: play(() => {
+    for (let i = 0; i < 16; i += 1) noise(i * 0.035, 0.03, { freq: 1800 + (i % 4) * 500, q: 2, gain: 0.07 })
+    noise(0.58, 0.12, { freq: 900, q: 0.8, gain: 0.1 })
+  }),
+  /** Freeze: an icy glass shimmer sliding down. */
+  freeze: play(() => {
+    ;[C7, G6, E6, C6].forEach((f, i) => bell(f, i * 0.05, 0.7, 0.08))
+    noise(0, 0.8, { filter: 'highpass', freq: 9000, freqEnd: 4000, gain: 0.05, reverb: 0.6 })
+  }),
+  /** Peek / hint: a soft magic whoosh upwards. */
+  peek: play(() => {
+    noise(0, 0.4, { freq: 600, freqEnd: 4000, q: 1, gain: 0.06, reverb: 0.4 })
+    bell(A5, 0.12, 0.5, 0.08)
+    bell(E6, 0.2, 0.6, 0.08)
+  }),
+  /** Frozen (your turn was skipped) or similar setback: an electric buzz and a cartoon "boing". */
   zap: play(() => {
     voice(110, 0, 0.32, { type: 'sawtooth', filter: 2400, gain: 0.09, vibrato: 60 })
     noise(0, 0.3, { freq: 5000, q: 2, gain: 0.08 })
     voice(520, 0.22, 0.3, { type: 'triangle', glide: 180, gain: 0.07, vibrato: 30 })
-  }),
-  /** A bullseye: a magical sparkle. */
-  bullseye: play(() => {
-    ;[C6, E6, G6, C7, E6, C7].forEach((f, i) => bell(f, i * 0.06, 0.6, 0.11))
-    noise(0, 0.6, { filter: 'highpass', freq: 7000, freqEnd: 11000, gain: 0.04, reverb: 0.6 })
   }),
   /** Ejected from the chair: a spring "sproing" and a whoosh. */
   eject: play(() => {

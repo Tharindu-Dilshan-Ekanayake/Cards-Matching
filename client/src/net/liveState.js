@@ -52,11 +52,17 @@ export const effectQueue = []
 
 /**
  * Seated players' table actions, for their pose (see seatPose): id (SELF_ANCHOR for
- * the local player) -> epoch ms each started — `press` (stopping the clock), `zap`
- * (lost a round, with `side`, which way it jolts them), `fly` (ejected from the
+ * the local player) -> epoch ms each started — `press` (reaching for a card), `zap`
+ * (frozen: turn skipped, with `side`, which way it jolts them), `fly` (ejected from the
  * chair, towards `ax`, `az`) and `danceAt` (when the winner may start dancing).
  */
 export const actionFx = new Map()
+
+/**
+ * One-off board animations per table, from fx messages: table id ->
+ * { shuffleAt, matchAt, matchCards, golden, missAt, missCards } (epoch ms).
+ */
+export const boardFx = new Map()
 
 /** Latest renderer stats, for the HUD perf readout and automated checks. */
 export const renderStats = { calls: 0, triangles: 0, textures: 0, geometries: 0, fps: 0 }

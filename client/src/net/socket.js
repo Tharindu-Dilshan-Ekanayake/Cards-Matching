@@ -3,11 +3,12 @@ import { Callbacks, Client } from '@colyseus/sdk'
 import { sfx } from '../audio/sfx'
 import { boxityEnv } from '../bloxity/env'
 import { loadEmoteCatalog, onPlatformEvent, platform } from '../bloxity/platform'
-import { DATA, SEATED_BACK, seatPosition, SPAWN } from '../game/layout'
+import { CARD_Y, cardLocal, DATA, SEATED_BACK, seatPosition, SPAWN, tableById, tableLocal } from '../game/layout'
 import { getSettings } from '../game/quality'
 import { isPlayingPhase, useGame } from './gameStore'
 import {
   actionFx,
+  boardFx,
   bubbles,
   effectQueue,
   localPlayer,
@@ -241,9 +242,10 @@ function resetWorld() {
   remoteEmotes.clear()
   bubbles.clear()
   actionFx.clear()
+  boardFx.clear()
   localPlayer.seat = null
   localPlayer.emote = null
-  useGame.setState({ players: {}, tables: {}, match: null, localPress: null })
+  useGame.setState({ players: {}, tables: {}, match: null, localFlips: null, reveal: null })
 }
 
 /** Wires a freshly joined room's state callbacks and messages into the client. */
@@ -441,6 +443,9 @@ function indexSeats(table) {
   for (const id of wasHere) if (!remoteSeats.has(id)) actionFx.delete(id)
 }
 
+const HIDDEN_BOARD = '.'.repeat(DATA.cards.cols * DATA.cards.rows)
+const EMPTY_OWNERS = '-'.repeat(DATA.cards.cols * DATA.cards.rows)
+
 /** Synced TableState -> the plain shape the UI uses, with local-clock times. */
 function applyTable(id, t) {
   const table = {
@@ -449,18 +454,17 @@ function applyTable(id, t) {
     seats: [t.seat0 ? { id: t.seat0, chair: t.chair0 } : null, t.seat1 ? { id: t.seat1, chair: t.chair1 } : null],
     winner: t.winner || null,
     endsAt: t.endsAt ? t.endsAt - clockOffset : 0,
-    /** When this round's clock starts (local clock), 0 outside a round. */
-    startAt: t.startAt ? t.startAt - clockOffset : 0,
-    round: t.round,
-    target: t.target,
-    show: t.show,
+    /** Seat whose turn it is (-1 outside a turn). */
+    turn: t.turn,
     scores: [t.score0, t.score1],
-    /** Each seat has stopped its clock this round. */
-    stops: [t.stop0, t.stop1],
-    /** Each seat's revealed time in ms (-1 still secret, -2 never pressed). */
-    times: [t.time0, t.time1],
-    /** Seat that won the round being revealed (-1 tie / none). */
-    roundWinner: t.rwin,
+    /** Per card: '.' face down, else its face code ('a' + atlas cell). */
+    board: t.board || HIDDEN_BOARD,
+    /** Per card: '0' / '1' matched by that seat, 'u' up this turn, '-' otherwise. */
+    owners: t.owners || EMPTY_OWNERS,
+    /** The two cards being shown are a pair. */
+    hit: t.hit,
+    /** Each seat's next turn will be skipped. */
+    frozen: [t.frz0, t.frz1],
   }
   indexSeats(table)
   useGame.setState((s) => ({ tables: { ...s.tables, [id]: table } }))
@@ -469,8 +473,7 @@ function applyTable(id, t) {
 /** Private match state with its server durations turned into local times. */
 function withTimes(match) {
   if (!match) return null
-  const now = Date.now()
-  return { ...match, endsAt: now + (match.endsInMs || 0), startAt: now + (match.startInMs || 0) }
+  return { ...match, endsAt: Date.now() + (match.endsInMs || 0) }
 }
 
 function withProfileDeadlines(profile) {
@@ -505,7 +508,7 @@ function headOf(seat) {
 
 /** The server's confirmations come as toasts; each kind gets its sound. */
 function playToastSound(text) {
-  if (/not enough|need \$|busy|full|walk closer|already|too slow|out of time|nothing left/i.test(text)) sfx.error()
+  if (/not enough|need \$|busy|full|walk closer|already|too slow|out of time|nothing left|no (hidden|pair)|not enough hidden/i.test(text)) sfx.error()
   else if (/bought|unlocked|claimed/i.test(text)) sfx.buy()
   else if (/quest complete|gift|reward|streak/i.test(text)) sfx.reward()
 }
@@ -513,7 +516,7 @@ function playToastSound(text) {
 /** actionFx is keyed by session id, except the local player's entry. */
 const fxKey = (id) => (id === useGame.getState().selfId ? SELF_ANCHOR : id)
 
-/** A seated player loses a round: their button zaps them, sparks off their head. */
+/** A seated player is jolted (frozen: their turn was skipped): sparks off their head. */
 function playZap(id, now) {
   const seat = seatOf(id)
   if (!seat) return
@@ -523,9 +526,21 @@ function playZap(id, now) {
     const head = headOf(seat)
     effectQueue.push({ kind: 'sparks', x: head.x, y: head.y, z: head.z })
   }
-  if (id === useGame.getState().selfId) {
-    useGame.setState({ flash: { kind: 'zap', at: now, delay: 0, until: now + 800 } })
-  }
+}
+
+/** World position of card `card` on table `tableId`, for particles. */
+function cardWorld(tableId, card) {
+  const t = tableById(tableId)
+  if (!t) return null
+  const [lx, lz] = cardLocal(card)
+  const [x, z] = tableLocal(t, lx, lz)
+  return { x, y: CARD_Y + 0.15, z }
+}
+
+/** A soft glow round the screen's edges (see ScreenFlash). */
+function flash(kind, ms = 800) {
+  const now = Date.now()
+  useGame.setState({ flash: { kind, at: now, delay: 0, until: now + ms } })
 }
 
 /** The duel's loser: their chair launches them off to one side and back from the table. */
@@ -565,23 +580,32 @@ const handlers = {
     localPlayer.seat = next ? { ...seatPosition(next.table, next.seat), dancing: Boolean(next.won) } : null
 
     if (next && prev) {
-      // A new round: its target is announced.
-      if (next.phase === 'target' && prev.phase !== 'target') sfx.go()
-      if (next.phase === 'running' && next.theirPressed && !prev.theirPressed) sfx.theirPress()
-      // The reveal: who was closer?
-      if (next.phase === 'reveal' && prev.phase !== 'reveal') {
-        if (next.roundWinner === 'me') sfx.roundWin()
-        else if (next.roundWinner === 'them') sfx.zap()
-        else sfx.tick()
+      // The cards are dealt.
+      if (next.phase === 'deal' && prev.phase !== 'deal') {
+        sfx.go()
+        sfx.deal()
       }
+      // The turn comes to you (not a fresh turn after your own pair: that has its chime).
+      const newTurn = next.phase === 'turn' && next.turnNo !== prev.turnNo
+      if (newTurn && next.turn === 'me' && (prev.turn !== 'me' || prev.phase === 'deal')) sfx.yourTurn()
     }
     // Standing up leaves the duel behind (an ejection's flight included).
     if (!next) actionFx.delete(SELF_ANCHOR)
     useGame.setState({
       match: next,
-      ...(!next ? { localPress: null } : {}),
+      ...(!next ? { localFlips: null, reveal: null } : {}),
       // The quit popup only makes sense while a duel is under way.
       ...(!isPlayingPhase(next?.phase) ? { quitAsk: false } : {}),
+    })
+  },
+
+  /** Peek / Hint: cards shown to this player only, for a moment. */
+  reveal(msg) {
+    const { match } = useGame.getState()
+    if (!match || !Array.isArray(msg.cards)) return
+    sfx.peek()
+    useGame.setState({
+      reveal: { kind: msg.kind, cards: msg.cards, table: match.table, until: Date.now() + (msg.ms || 1500) },
     })
   },
 
@@ -599,37 +623,63 @@ const handlers = {
 
   /**
    * Table actions anywhere in the room, so every duel looks alive from the square:
-   * a press (hand slams the button), a zap (lost a round), an ejection (lost the
-   * duel) or a bullseye.
+   * a flip (the hand reaches for a card), a pair or a miss, a shuffle, a freeze, a
+   * jolt (frozen: turn skipped) or an ejection (lost the duel).
    */
   fx(msg) {
     const now = Date.now()
+    const { selfId, match } = useGame.getState()
     const key = fxKey(msg.id)
-    if (msg.kind === 'press') {
-      // The local player's own press already started the animation (timerActions).
+    const atMyTable = Boolean(match && msg.table === match.table)
+    if (msg.kind === 'flip') {
+      // The local player's own flip already started the animation (cardActions).
       const fx = actionFx.get(key)
       if (!fx?.press || now - fx.press > 1000) actionFx.set(key, { ...fx, press: now })
+      if (atMyTable && msg.id !== selfId) sfx.theirFlip()
       return
     }
-    if (msg.kind === 'zap') {
+    if (msg.kind === 'match') {
+      const mine = msg.id === selfId
+      if (atMyTable) {
+        if (msg.golden) sfx.golden()
+        else if (mine) sfx.match()
+        else sfx.theirMatch()
+        if (mine) flash(msg.golden ? 'golden' : 'match', msg.golden ? 1000 : 600)
+      }
+      boardFx.set(msg.table, { ...boardFx.get(msg.table), matchAt: now, matchCards: msg.cards, golden: Boolean(msg.golden) })
+      if (getSettings().particles && Array.isArray(msg.cards)) {
+        const [a, c] = msg.cards.map((card) => cardWorld(msg.table, card))
+        if (msg.golden && a && c) effectQueue.push({ kind: 'confetti', x: (a.x + c.x) / 2, y: a.y, z: (a.z + c.z) / 2 })
+        else for (const p of [a, c]) if (p) effectQueue.push({ kind: 'sparks', ...p })
+      }
+      return
+    }
+    if (msg.kind === 'miss') {
+      if (atMyTable) sfx.miss()
+      boardFx.set(msg.table, { ...boardFx.get(msg.table), missAt: now, missCards: msg.cards })
+      return
+    }
+    if (msg.kind === 'shuffle') {
+      if (atMyTable) sfx.shuffle()
+      boardFx.set(msg.table, { ...boardFx.get(msg.table), shuffleAt: now })
+      return
+    }
+    if (msg.kind === 'freeze') {
+      if (atMyTable) {
+        sfx.freeze()
+        if (msg.id === selfId) flash('freeze', 1100)
+      }
+      return
+    }
+    if (msg.kind === 'frozen') {
       playZap(msg.id, now)
+      if (msg.id === selfId) {
+        sfx.zap()
+        flash('freeze', 1100)
+      }
       return
     }
-    if (msg.kind === 'eject') {
-      playEject(msg.id, now)
-      return
-    }
-    if (msg.kind === 'bullseye') {
-      const seat = seatOf(msg.id)
-      if (seat && getSettings().particles) {
-        const head = headOf(seat)
-        effectQueue.push({ kind: 'confetti', x: head.x, y: head.y + 0.6, z: head.z })
-      }
-      if (msg.id === useGame.getState().selfId) {
-        sfx.bullseye()
-        useGame.setState({ flash: { kind: 'bullseye', at: now, delay: 0, until: now + 900 } })
-      }
-    }
+    if (msg.kind === 'eject') playEject(msg.id, now)
   },
 
   bubble(msg) {
@@ -663,7 +713,7 @@ const handlers = {
   result(msg) {
     // The winner climbs up to dance once the loser has been ejected.
     if (msg.winner) {
-      const wait = msg.reason === 'timer' ? EJECT_MS + DANCE_AFTER_EJECT_MS : 0
+      const wait = msg.reason === 'cards' ? EJECT_MS + DANCE_AFTER_EJECT_MS : 0
       const key = fxKey(msg.winner)
       actionFx.set(key, { ...actionFx.get(key), danceAt: Date.now() + wait })
     }
@@ -693,7 +743,7 @@ function showResult(msg) {
         reward: win ? msg.reward : msg.consolation || 0,
         /** What a quitter paid (the winner's reward already includes it). */
         penalty: msg.penalty || 0,
-        /** Rounds won: [yours, theirs]. */
+        /** Points: [yours, theirs]. */
         score: [msg.score[mySeat], msg.score[1 - mySeat]],
         reason: msg.reason,
         until: now + 4600,

@@ -71,7 +71,7 @@ function App() {
   const onReady = useCallback(() => setReady(true), [])
 
   return (
-    <div className="relative h-dvh w-screen select-none overflow-hidden bg-[#ffc29a] font-game">
+    <div className="relative h-dvh w-screen select-none overflow-hidden bg-[#ffd9c7] font-game">
       <Suspense fallback={null}>
         <GameScene onReady={onReady} />
       </Suspense>

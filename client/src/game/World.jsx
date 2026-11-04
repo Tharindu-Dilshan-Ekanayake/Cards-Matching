@@ -12,11 +12,11 @@ import { createTileTexture, createWorldDiscGeometry } from './textures'
 import { archBoxes } from './arch'
 import ContactShadows from './ContactShadows'
 import ArchSign from './ArchGate'
-import ClockTower from './ClockTower'
+import CardTower from './CardTower'
 import GuideBoard from './GuideBoard'
 import Instanced from './Instanced'
 import Island from './Island'
-import { gearStandBoxes } from './islandGeometry'
+import { giantCardStandBoxes } from './islandGeometry'
 import { useDisposable } from './useDisposable'
 
 /** World size of one ground texture repeat (2 x 2 flagstones of 1 unit). */
@@ -24,7 +24,7 @@ const GROUND_TILE = 2
 
 /**
  * A rug pattern in light tones (instance colour tints it): a plain field, a
- * patterned border band and a thin inner line. 128 px, one shared texture.
+ * border band of little diamonds and a thin inner line. 128 px, one shared texture.
  */
 function createRugTexture() {
   const size = 128
@@ -38,12 +38,22 @@ function createRugTexture() {
   ctx.fillRect(0, size - 14, size, 14)
   ctx.fillRect(0, 0, 14, size)
   ctx.fillRect(size - 14, 0, 14, size)
+  // A border of little card-suit diamonds.
   ctx.fillStyle = '#9a9a9a'
-  for (let i = 4; i < size; i += 12) {
-    ctx.fillRect(i, 5, 4, 4)
-    ctx.fillRect(i, size - 9, 4, 4)
-    ctx.fillRect(5, i, 4, 4)
-    ctx.fillRect(size - 9, i, 4, 4)
+  const pip = (x, y) => {
+    ctx.beginPath()
+    ctx.moveTo(x, y - 4)
+    ctx.lineTo(x + 3, y)
+    ctx.lineTo(x, y + 4)
+    ctx.lineTo(x - 3, y)
+    ctx.closePath()
+    ctx.fill()
+  }
+  for (let i = 6; i < size; i += 12) {
+    pip(i, 7)
+    pip(i, size - 7)
+    pip(7, i)
+    pip(size - 7, i)
   }
   ctx.strokeStyle = '#bcbcbc'
   ctx.lineWidth = 2
@@ -54,16 +64,17 @@ function createRugTexture() {
 }
 
 /**
- * All the box-built scenery (the welcome gate, the gears' stands, and the square's
- * lamp posts, string lights, planters, clock tower, hourglass and Store) as
- * instances of one unit cube: one draw call.
+ * All the box-built scenery (the welcome gate, the giant cards' plinths, and the
+ * square's lamp posts, string lights, planters, the house of cards' plinth, the dice
+ * and the Store) as instances of one unit cube: one draw call.
  */
-const SCENERY = [...archBoxes(), ...gearStandBoxes(), ...lobbyBoxes()]
+const SCENERY = [...archBoxes(), ...giantCardStandBoxes(), ...lobbyBoxes()]
 
 /**
- * The map: a round island floating above a sea of clouds at sunset (see Island),
- * paved in lavender flagstones, with the clock-tower square in the middle (see
- * layout.js and lobby.js).
+ * The map, "Card Kingdom": a round island of mint stone floating above a sea of
+ * clouds on a bright afternoon (see Island), with a harlequin-paved square in the
+ * middle and a giant house of cards at its heart (see layout.js, lobby.js and
+ * CardTower).
  *
  * Repeated props are instanced and multi-part props are merged, so the whole
  * landscape is a dozen or so draw calls.
@@ -132,7 +143,7 @@ export function World({ extras = 'on' }) {
       <Instanced geometry={res.box} material={res.tinted} items={SCENERY} castShadow={shadows} receiveShadow />
       <Instanced geometry={res.box} material={res.bulb} items={LAMP_BULBS} />
       <ArchSign />
-      <ClockTower />
+      <CardTower />
       <GuideBoard />
       {/* Realtime shadows are off on LOW: soft baked ones keep the depth. */}
       {!shadows && <ContactShadows />}

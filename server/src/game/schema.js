@@ -4,9 +4,9 @@ const { schema, t } = require('@colyseus/schema')
  * Synchronised room state. Colyseus diffs it and sends only changed fields to every
  * client at the room's patch rate.
  *
- * Only public information lives here. The time each player stopped their clock (until
- * the round is revealed), their duel view and their profile (cash, inventory) go to
- * that player alone as messages.
+ * Only public information lives here. The faces of hidden cards, a player's private
+ * peeks and hints, their duel view and their profile (cash, inventory) go to that
+ * player alone as messages.
  */
 
 const PlayerState = schema(
@@ -40,7 +40,7 @@ const PlayerState = schema(
 
 const TableState = schema(
   {
-    /** 'waiting' | 'countdown' | 'target' | 'running' | 'reveal' | 'ended' */
+    /** 'waiting' | 'countdown' | 'deal' | 'turn' | 'reveal' | 'ended' */
     phase: t.string(),
     /** Session ids in the two seats ('' when empty), and each one's equipped chair. */
     seat0: t.string(),
@@ -49,27 +49,24 @@ const TableState = schema(
     chair1: t.string(),
     /** Session id of the duel's winner while the result shows: they dance on the table. */
     winner: t.string(),
-    /** Server epoch ms when the current phase times out (0 when it doesn't). */
+    /** Server epoch ms when the current phase (or turn) times out (0 when it doesn't). */
     endsAt: t.float64(),
-    /** Server epoch ms when this round's clock starts (0 outside a round). */
-    startAt: t.float64(),
-    /** Round number (1-based), its target time and how long the clock shows, in ms. */
-    round: t.uint8(),
-    target: t.uint32(),
-    show: t.uint16(),
+    /** Seat whose turn it is, -1 outside a turn. */
+    turn: t.int8(),
     score0: t.uint8(),
     score1: t.uint8(),
-    /** Each seat has stopped its clock this round (the time itself stays secret). */
-    stop0: t.boolean(),
-    stop1: t.boolean(),
     /**
-     * Each seat's stopped time once the round is revealed, in ms: -1 still secret,
-     * -2 never pressed.
+     * One character per card: '.' face down, else its face ('a' + face index). Hidden
+     * faces never leave the server.
      */
-    time0: t.int32(),
-    time1: t.int32(),
-    /** Seat that won the round being revealed, -1 for a tie (or none). */
-    rwin: t.int8(),
+    board: t.string(),
+    /** Per card: '0' / '1' matched by that seat, 'u' face up this turn, '-' otherwise. */
+    owners: t.string(),
+    /** The two cards being shown are a pair. */
+    hit: t.boolean(),
+    /** Each seat's next turn will be skipped (frozen). */
+    frz0: t.boolean(),
+    frz1: t.boolean(),
   },
   'Table',
 )

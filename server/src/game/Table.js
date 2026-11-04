@@ -1,53 +1,63 @@
 const DATA = require('./data')
 
 const T = DATA.timing
-const TM = DATA.timer
-/** Synced `time0`/`time1` values before a round is revealed, and for a player who never pressed. */
-const HIDDEN = -1
-const NO_PRESS = -2
+const C = DATA.cards
+const CARD_COUNT = C.cols * C.rows
+const PAIRS = CARD_COUNT / 2
+/** Face index of the golden pair (the face pool's indices come first). */
+const GOLDEN = C.faces.length
 /** After the result: when the loser's chair launches them out, in seconds. */
 const EJECT_AT_S = 0.9
 /** Phases in which a duel is under way (leaving one is a forfeit). */
-const PLAYING = new Set(['target', 'running', 'reveal'])
+const PLAYING = new Set(['deal', 'turn', 'reveal'])
+const POWER_IDS = new Set(DATA.powers.map((p) => p.id))
+/** A flip that arrives just after the turn ran out still counts (network delay). */
+const GRACE_MS = 200
+/** What a player sometimes says after a miss. */
+const MISS_LINES = ['Oops! 😅', 'Argh! 😤', 'So close! 😬', 'Hmm… 🤔']
 
 const randomInt = (n) => Math.floor(Math.random() * n)
-const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n))
 
-/** Settings for round `n` (1-based); rounds past the list reuse its last entry. */
-const roundConfig = (n) => TM.rounds[Math.min(n, TM.rounds.length) - 1]
-
-/**
- * A random target for round `n`, to the millisecond (e.g. 7.384 s): never a round
- * number to aim for. A whole or half second is rerolled.
- */
-function pickTarget(n) {
-  const r = roundConfig(n)
-  let ms
-  do ms = Math.round((r.min + Math.random() * (r.max - r.min)) * 1000)
-  while (ms % 500 === 0)
-  return ms
+function shuffleInPlace(a) {
+  for (let i = a.length - 1; i > 0; i -= 1) {
+    const j = randomInt(i + 1)
+    ;[a[i], a[j]] = [a[j], a[i]]
+  }
+  return a
 }
 
+/** A fresh deck: PAIRS - 1 random faces from the pool plus the golden pair, each twice, shuffled. */
+function newDeck() {
+  const picked = shuffleInPlace([...C.faces.keys()]).slice(0, PAIRS - 1)
+  return shuffleInPlace([...picked, GOLDEN].flatMap((f) => [f, f]))
+}
+
+const pointsFor = (face) => (face === GOLDEN ? C.goldenPoints : 1)
+/** A face as one character of the synced board ('a' + face index). */
+const code = (face) => String.fromCharCode(97 + face)
+
 /**
- * One two-seat table and the duel played at it.
+ * One two-seat table and the memory duel played at it.
  *
- * Every round has a target time. A clock starts from zero in front of both players;
- * it shows for the first second or few (less each round), then goes blind. Each
- * player stops their own clock when they think it has reached the target. The
- * closer stop wins the round; the first to DATA.timer.winsNeeded rounds wins.
+ * Twenty cards lie face down: nine random pairs from the face pool and one golden
+ * pair worth DATA.cards.goldenPoints (so the points can never end level). Players
+ * take turns flipping two cards; both see every flip. A pair scores and the same
+ * player goes again; a miss turns both back and passes the turn. A turn lasts
+ * DATA.cards.turnSec. Each player may use each power-up once per duel, on their own
+ * turn: Peek (one hidden card, to them alone), Hint (a matching pair, to them
+ * alone), Shuffle (every hidden card swaps places) and Freeze (the opponent's next
+ * turn is skipped). The duel ends as soon as the leader can no longer be caught.
  *
  * Phases:
  *   waiting   - zero or one player seated
  *   countdown - both seats filled, "Starting in 3..."
- *   target    - the round's target is announced; the clock starts as it ends
- *   running   - the clock runs (visible, then blind) until both have pressed or
- *               DATA.timer.overSec after the target
- *   reveal    - both stopped times and the round's winner on screen
+ *   deal      - the cards are dealt
+ *   turn      - `turn` seat is choosing cards (up to two face up)
+ *   reveal    - two cards are up: a pair (`hit`) or a miss, briefly shown
  *   ended     - result on screen; both players are stood up when it runs out
  *
- * The server keeps the time: a press counts from the round's start on the server
- * clock, so the client's reading is only trusted within DATA.timer.lagMs of it
- * (its network delay). Nobody learns the other's time until the reveal.
+ * The faces of hidden cards never leave the server: the synced board shows only
+ * cards that are face up or matched.
  */
 class Table {
   /**
@@ -70,19 +80,30 @@ class Table {
   reset() {
     this.phase = 'waiting'
     this.endsAt = 0
-    this.startAt = 0
-    this.round = 0
-    this.target = 0
-    this.showMs = 0
+    /** Face index at each position (empty until a duel deals). */
+    this.faces = []
+    /** Seat that matched each position, -1 while unmatched. */
+    this.owner = new Array(CARD_COUNT).fill(-1)
+    /** Positions face up this turn (0..2). */
+    this.up = []
+    this.turn = -1
+    /** Counts turns (a fresh turn after a pair too), so clients can tell them apart. */
+    this.turnNo = 0
     this.score = [0, 0]
-    /** What each seat's clock read when they stopped it this round, in ms (null = not yet). */
-    this.pressed = [null, null]
-    /** Total distance from the targets over every round: the tie-break after the last one. */
-    this.errors = [0, 0]
-    /** Rounds in a row each seat let pass without pressing. */
-    this.misses = [0, 0]
-    this.roundWinner = -1
-    /** Seat index of the winner once the duel has ended, else -1. */
+    /** Pairs found in a row in the current turn. */
+    this.combo = 0
+    /** The reveal on show is a pair. */
+    this.hit = false
+    /** Seats whose next turn is skipped (a Freeze). */
+    this.frozen = [false, false]
+    /** Power-ups each seat has used this duel. */
+    this.used = [new Set(), new Set()]
+    /** Turns in a row each seat let run out without flipping a card. */
+    this.idle = [0, 0]
+    /** This turn's player has flipped at least one card. */
+    this.acted = false
+    /** Seat that found the most recent pair (the tie-break, should one ever happen). */
+    this.lastFound = -1
     this.winner = -1
     // Invalidates any setTimeout scheduled for the previous match.
     this.token += 1
@@ -141,115 +162,203 @@ class Table {
     session.send('match', { match: null })
   }
 
-  /** Announces the next round's target; its clock starts when this phase ends. */
-  startRound(now) {
-    this.round += 1
-    this.target = pickTarget(this.round)
-    this.showMs = Math.round(roundConfig(this.round).show * 1000)
-    this.pressed = [null, null]
-    this.roundWinner = -1
-    this.phase = 'target'
-    this.endsAt = now + T.target * 1000
-    this.startAt = this.endsAt
+  /** Deals a fresh board; a random player goes first once it has landed. */
+  deal(now) {
+    this.faces = newDeck()
+    this.owner.fill(-1)
+    this.up = []
+    this.turn = randomInt(2)
+    this.phase = 'deal'
+    this.endsAt = now + C.dealSec * 1000
     this.sync(now)
   }
 
-  startRunning(now) {
-    this.phase = 'running'
-    this.endsAt = this.startAt + this.target + TM.overSec * 1000
+  startTurn(seat, now) {
+    if (this.turn !== seat) this.combo = 0
+    this.turn = seat
+    this.turnNo += 1
+    this.up = []
+    this.acted = false
+    this.phase = 'turn'
+    this.endsAt = now + C.turnSec * 1000
     this.sync(now)
   }
 
-  /**
-   * A player stops their clock. `ms` is what their own clock read (the client's
-   * view of the time since the start); it only counts within DATA.timer.lagMs
-   * before the server received the press, never later.
-   */
-  press(session, ms, now) {
+  /** The turn goes to the other player, unless they are frozen: then it comes straight back. */
+  passTurn(now) {
+    const next = 1 - this.turn
+    this.combo = 0
+    if (this.frozen[next]) {
+      this.frozen[next] = false
+      const frozen = this.seats[next]
+      if (frozen) {
+        this.room.bubble(frozen, 'FROZEN! 🥶')
+        this.room.broadcast('fx', { kind: 'frozen', id: frozen.id })
+      }
+      for (const s of this.seats) s?.toast(`❄️ ${frozen?.player.name ?? 'They'} is frozen: turn skipped!`)
+      this.startTurn(this.turn, now)
+      return
+    }
+    this.startTurn(next, now)
+  }
+
+  canAct(i, now) {
+    return this.phase === 'turn' && this.turn === i && now <= this.endsAt + GRACE_MS
+  }
+
+  /** A player turns card `pos` face up. */
+  flip(session, pos, now) {
     const i = this.seatOf(session)
-    if (i < 0) return
-    // The tick that starts the clock may not have run yet.
-    if (this.phase === 'target' && now >= this.startAt) this.startRunning(now)
-    if (this.phase !== 'running' || this.pressed[i] !== null) return
+    if (i < 0 || !this.canAct(i, now)) return
+    if (!Number.isInteger(pos) || pos < 0 || pos >= CARD_COUNT) return
+    if (this.owner[pos] >= 0 || this.up.includes(pos)) return
 
-    const elapsed = now - this.startAt
-    const claimed = Number.isFinite(ms) ? ms : elapsed
-    this.pressed[i] = Math.round(clamp(claimed, Math.max(0, elapsed - TM.lagMs), elapsed))
-    this.room.bubble(session, 'STOP! ✋')
-    this.room.broadcast('fx', { kind: 'press', id: session.id })
-
-    if (this.pressed[1 - i] !== null) this.resolveRound(now)
+    this.up.push(pos)
+    this.acted = true
+    this.idle[i] = 0
+    this.room.broadcast('fx', { kind: 'flip', id: session.id, table: this.id, card: pos })
+    if (this.up.length === 2) this.resolve(i, now)
     else this.sync(now)
   }
 
-  /** Both have pressed (or time ran out): who was closer? */
-  resolveRound(now) {
-    const err = this.pressed.map((p) => (p === null ? Infinity : Math.abs(p - this.target)))
-    let w = -1
-    if (err[0] < err[1]) w = 0
-    else if (err[1] < err[0]) w = 1
-    this.roundWinner = w
-    if (w >= 0) this.score[w] += 1
-
-    err.forEach((e, i) => {
-      this.errors[i] += Math.min(e, TM.overSec * 1000)
-      this.misses[i] = this.pressed[i] === null ? this.misses[i] + 1 : 0
-      const s = this.seats[i]
-      if (!s) return
-      if (i === w) this.room.bubble(s, e <= TM.closeMs ? 'Nailed it! 😎' : 'Closer! 😏')
-      else if (e === Infinity) this.room.bubble(s, 'Too late! 🐢')
-      else if (w >= 0) this.room.bubble(s, 'So close! 😬')
-      else this.room.bubble(s, 'A tie?! 🤝')
-      if (e <= TM.closeMs) this.room.questEvent(s, 'close', now)
-      if (e <= TM.bullseyeMs) {
-        this.room.bonusCash(s, TM.bullseyeCash, now)
-        this.room.questEvent(s, 'bullseye', now)
-        this.room.bubble(s, 'BULLSEYE! 🎯')
-        this.room.broadcast('fx', { kind: 'bullseye', id: s.id })
+  /** Two cards are up: a pair scores, a miss is shown before they turn back. */
+  resolve(i, now) {
+    const [a, b] = this.up
+    const session = this.seats[i]
+    this.hit = this.faces[a] === this.faces[b]
+    if (this.hit) {
+      const face = this.faces[a]
+      const golden = face === GOLDEN
+      this.owner[a] = i
+      this.owner[b] = i
+      this.score[i] += pointsFor(face)
+      this.combo += 1
+      this.lastFound = i
+      if (session) {
+        this.room.questEvent(session, 'pair', now)
+        if (golden) this.room.questEvent(session, 'golden', now)
+        if (this.combo === 3) this.room.questEvent(session, 'combo3', now)
+        let line = 'Got it! 😎'
+        if (golden) line = 'GOLDEN PAIR! ⭐'
+        else if (this.combo >= 2) line = `Combo x${this.combo}! 🔥`
+        this.room.bubble(session, line)
       }
-    })
-    // Everyone in the room sees the round's loser get a little zap from their button.
-    const loser = w >= 0 ? this.seats[1 - w] : null
-    if (loser) this.room.broadcast('fx', { kind: 'zap', id: loser.id })
-
+      this.room.broadcast('fx', { kind: 'match', id: session?.id ?? '', table: this.id, cards: [a, b], golden })
+      this.endsAt = now + C.matchMs
+    } else {
+      if (session && Math.random() < 0.35) this.room.bubble(session, MISS_LINES[randomInt(MISS_LINES.length)])
+      this.room.broadcast('fx', { kind: 'miss', id: session?.id ?? '', table: this.id, cards: [a, b] })
+      this.endsAt = now + C.missMs
+    }
     this.phase = 'reveal'
-    this.endsAt = now + T.reveal * 1000
     this.sync(now)
   }
 
-  /** After a reveal: the duel is decided, or on to the next round. */
+  /** Points still on the board. */
+  remaining() {
+    let points = 0
+    for (let p = 0; p < CARD_COUNT; p += 1) if (this.owner[p] < 0) points += pointsFor(this.faces[p])
+    // Each pair was counted twice (once per card).
+    return points / 2
+  }
+
+  /** The seat that has already won (nobody can catch them), or -1. */
+  decided() {
+    const left = this.remaining()
+    const [a, b] = this.score
+    if (a > b + left) return 0
+    if (b > a + left) return 1
+    if (left === 0) return this.lastFound >= 0 ? this.lastFound : randomInt(2)
+    return -1
+  }
+
   afterReveal(now) {
-    const decided = this.score.findIndex((s) => s >= TM.winsNeeded)
-    if (decided >= 0) {
-      this.finish(decided, 1 - decided, 'timer', now)
+    if (this.hit) {
+      const w = this.decided()
+      if (w >= 0) {
+        this.finish(w, 1 - w, 'cards', now)
+        return
+      }
+      // A pair: the same player goes again, with a fresh turn.
+      this.startTurn(this.turn, now)
       return
     }
-    // Nobody is pressing any more: call the duel off rather than run it forever.
-    if (this.misses[0] >= 2 && this.misses[1] >= 2) {
-      for (const s of this.seats) s?.toast('Nobody stopped the clock: duel cancelled')
-      this.unseat(0)
-      this.unseat(1)
-      this.reset()
-      this.sync(now)
+    this.up = []
+    this.passTurn(now)
+  }
+
+  /** The turn ran out: any card up turns back and the turn passes. Two empty turns in a row lose. */
+  timeout(now) {
+    const i = this.turn
+    if (!this.acted) this.idle[i] += 1
+    if (this.idle[i] >= C.afkTurns) {
+      // The other player let their last turn run out too: nobody is playing.
+      if (this.idle[1 - i] >= C.afkTurns - 1) {
+        // Nobody is playing: call the duel off rather than run it forever.
+        for (const s of this.seats) s?.toast('Nobody is flipping cards: duel cancelled')
+        this.unseat(0)
+        this.unseat(1)
+        this.reset()
+        this.sync(now)
+        return
+      }
+      this.finish(1 - i, i, 'afk', now)
       return
     }
-    const asleep = this.misses.findIndex((m) => m >= 2)
-    if (asleep >= 0) {
-      this.finish(1 - asleep, asleep, 'afk', now)
+    const session = this.seats[i]
+    if (session) this.room.bubble(session, 'Too slow! 🐢')
+    this.up = []
+    this.passTurn(now)
+  }
+
+  /** A player uses a power-up (once each per duel, on their own turn). */
+  power(session, id, now) {
+    const i = this.seatOf(session)
+    if (i < 0 || !this.canAct(i, now) || !POWER_IDS.has(id)) return
+    if (this.used[i].has(id)) {
+      session.toast('You already used that power-up this duel')
       return
     }
-    if (this.round >= TM.maxRounds) {
-      // Out of rounds: the higher score, then the smaller total error, wins.
-      const [a, b] = this.score
-      const [ea, eb] = this.errors
-      let w
-      if (a !== b) w = a > b ? 0 : 1
-      else if (ea !== eb) w = ea < eb ? 0 : 1
-      else w = randomInt(2)
-      this.finish(w, 1 - w, 'timer', now)
-      return
+    const hidden = []
+    for (let p = 0; p < CARD_COUNT; p += 1) if (this.owner[p] < 0 && !this.up.includes(p)) hidden.push(p)
+    const opponent = this.seats[1 - i]
+
+    if (id === 'peek') {
+      if (!hidden.length) return session.toast('No hidden cards to peek at')
+      const p = hidden[randomInt(hidden.length)]
+      session.send('reveal', { kind: 'peek', ms: C.peekMs, cards: [{ i: p, f: code(this.faces[p]) }] })
+    } else if (id === 'hint') {
+      const byFace = new Map()
+      for (const p of hidden) byFace.set(this.faces[p], [...(byFace.get(this.faces[p]) || []), p])
+      const pairs = [...byFace.values()].filter((ps) => ps.length === 2)
+      if (!pairs.length) return session.toast('No pair left to hint')
+      const pair = pairs[randomInt(pairs.length)]
+      session.send('reveal', {
+        kind: 'hint',
+        ms: C.hintMs,
+        cards: pair.map((p) => ({ i: p, f: code(this.faces[p]) })),
+      })
+    } else if (id === 'shuffle') {
+      if (hidden.length < 2) return session.toast('Not enough hidden cards to shuffle')
+      const mixed = shuffleInPlace(hidden.map((p) => this.faces[p]))
+      hidden.forEach((p, k) => {
+        this.faces[p] = mixed[k]
+      })
+      this.room.broadcast('fx', { kind: 'shuffle', table: this.id, id: session.id })
+      opponent?.toast(`🔀 ${session.player.name} shuffled the cards!`)
+    } else if (id === 'freeze') {
+      if (!opponent) return
+      this.frozen[1 - i] = true
+      this.room.broadcast('fx', { kind: 'freeze', table: this.id, id: opponent.id, by: session.id })
+      opponent.toast(`❄️ ${session.player.name} froze you: your next turn is skipped!`)
     }
-    this.startRound(now)
+
+    this.used[i].add(id)
+    this.room.questEvent(session, 'power', now)
+    const p = DATA.powers.find((x) => x.id === id)
+    this.room.bubble(session, `${p.name}! ${p.icon}`)
+    this.room.broadcast('fx', { kind: 'power', id: session.id, power: id })
+    this.sync(now)
   }
 
   /**
@@ -261,15 +370,16 @@ class Table {
     this.phase = 'ended'
     this.endsAt = now + T.results * 1000
     this.winner = w
+    this.up = []
 
     const winner = this.seats[w]
     const loser = this.seats[l]
     let reward = 0
 
-    const played = reason === 'timer'
+    const played = reason === 'cards'
     const penalty = reason === 'forfeit' && loser ? this.room.takeCash(loser, DATA.forfeit.penalty, now) : 0
     if (winner) {
-      reward = this.room.recordWin(winner, { flawless: played && this.score[l] === 0 }, now)
+      reward = this.room.recordWin(winner, { bigWin: played && this.score[w] - this.score[l] >= 4 }, now)
       if (penalty) reward += this.room.bonusCash(winner, penalty, now)
     }
     let consolation = 0
@@ -288,7 +398,7 @@ class Table {
       reason,
     })
     this.sync(now)
-    // Round end: report leaderboard scores now rather than at the next batch.
+    // Duel end: report leaderboard scores now rather than at the next batch.
     this.room.flushScores()
 
     const token = this.token
@@ -308,12 +418,11 @@ class Table {
     if (this.phase === 'waiting' || now < this.endsAt) return
 
     if (this.phase === 'countdown') {
-      this.startRound(now)
-    } else if (this.phase === 'target') {
-      this.startRunning(now)
-    } else if (this.phase === 'running') {
-      // Out of time: whoever hasn't pressed loses the round.
-      this.resolveRound(now)
+      this.deal(now)
+    } else if (this.phase === 'deal') {
+      this.startTurn(this.turn, now)
+    } else if (this.phase === 'turn') {
+      if (now > this.endsAt + GRACE_MS) this.timeout(now)
     } else if (this.phase === 'reveal') {
       this.afterReveal(now)
     } else if (this.phase === 'ended') {
@@ -324,34 +433,49 @@ class Table {
     }
   }
 
-  /** A seat's synced time: secret until the reveal. */
-  shownTime(i) {
-    if (this.phase !== 'reveal' && this.phase !== 'ended') return HIDDEN
-    return this.pressed[i] ?? NO_PRESS
+  /**
+   * The public board: one character per card, '.' while hidden, else its face.
+   * Every face shows once the duel has ended.
+   */
+  boardString() {
+    if (!this.faces.length) return '.'.repeat(CARD_COUNT)
+    let s = ''
+    for (let p = 0; p < CARD_COUNT; p += 1) {
+      const shown = this.owner[p] >= 0 || this.up.includes(p) || this.phase === 'ended'
+      s += shown ? code(this.faces[p]) : '.'
+    }
+    return s
+  }
+
+  /** Who matched each card: '0' / '1', 'u' for a card up this turn, '-' otherwise. */
+  ownerString() {
+    let s = ''
+    for (let p = 0; p < CARD_COUNT; p += 1) {
+      if (this.owner[p] >= 0) s += String(this.owner[p])
+      else s += this.up.includes(p) ? 'u' : '-'
+    }
+    return s
   }
 
   privateState(i, now) {
     const o = 1 - i
     const ended = this.phase === 'ended'
-    let roundWinner = null
-    if (this.phase === 'reveal') roundWinner = this.roundWinner < 0 ? 'tie' : this.roundWinner === i ? 'me' : 'them'
+    let turn = null
+    if (this.turn >= 0 && this.phase !== 'ended') turn = this.turn === i ? 'me' : 'them'
     return {
       table: this.id,
       seat: i,
       phase: this.phase,
       endsInMs: Math.max(0, this.endsAt - now),
-      /** Until the clock starts (negative once it has): turned into a local time on receipt. */
-      startInMs: this.startAt ? this.startAt - now : 0,
-      round: this.round,
-      target: this.target,
-      showMs: this.showMs,
+      turn,
+      turnNo: this.turnNo,
       myScore: this.score[i],
       theirScore: this.score[o],
-      pressed: this.pressed[i] !== null,
-      theirPressed: this.pressed[o] !== null,
-      myTime: this.shownTime(i),
-      theirTime: this.shownTime(o),
-      roundWinner,
+      combo: this.turn === i ? this.combo : 0,
+      used: [...this.used[i]],
+      theirUsed: [...this.used[o]],
+      frozen: this.frozen[i],
+      theirFrozen: this.frozen[o],
       won: ended && this.winner === i,
       opponent: this.seats[o]?.id ?? null,
     }
@@ -363,7 +487,6 @@ class Table {
    */
   sync(now = Date.now()) {
     const st = this.state
-    const inRound = PLAYING.has(this.phase) || this.phase === 'ended'
     st.phase = this.phase
     st.seat0 = this.seats[0]?.id ?? ''
     st.seat1 = this.seats[1]?.id ?? ''
@@ -371,17 +494,14 @@ class Table {
     st.chair1 = this.seats[1]?.profile.equippedChair ?? ''
     st.winner = this.phase === 'ended' ? (this.seats[this.winner]?.id ?? '') : ''
     st.endsAt = this.phase === 'waiting' ? 0 : this.endsAt
-    st.startAt = inRound ? this.startAt : 0
-    st.round = this.round
-    st.target = inRound ? this.target : 0
-    st.show = inRound ? this.showMs : 0
+    st.turn = this.phase === 'turn' || this.phase === 'reveal' ? this.turn : -1
     st.score0 = this.score[0]
     st.score1 = this.score[1]
-    st.stop0 = this.phase === 'running' && this.pressed[0] !== null
-    st.stop1 = this.phase === 'running' && this.pressed[1] !== null
-    st.time0 = this.shownTime(0)
-    st.time1 = this.shownTime(1)
-    st.rwin = this.phase === 'reveal' ? this.roundWinner : -1
+    st.board = this.boardString()
+    st.owners = this.ownerString()
+    st.hit = this.phase === 'reveal' && this.hit
+    st.frz0 = this.frozen[0]
+    st.frz1 = this.frozen[1]
     this.seats.forEach((s, i) => s?.send('match', { match: this.privateState(i, now) }))
   }
 }

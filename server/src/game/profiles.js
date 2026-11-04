@@ -230,7 +230,7 @@ function todaysQuests(now) {
 }
 
 /**
- * Records a gameplay event ('play', 'win', 'flawless', 'streak3', 'close', 'bullseye',
+ * Records a gameplay event ('play', 'win', 'bigwin', 'streak3', 'pair', 'golden', 'combo3', 'power',
  * 'emote').
  */
 function addQuestEvent(p, event, amount = 1, now = Date.now()) {

@@ -170,7 +170,7 @@ class GameRoom extends Room {
     void flushScores()
   }
 
-  /** Extra cash outside the win/loss rewards (a bullseye, a quitter's penalty). Returns it. */
+  /** Extra cash outside the win/loss rewards (a quitter's penalty). Returns it. */
   bonusCash(session, amount, now) {
     session.profile.cash += amount
     profiles.markDirty(session.profile)
@@ -202,10 +202,10 @@ class GameRoom extends Room {
   }
 
   /**
-   * Awards a win. `flawless`: won a finished duel without losing a round.
+   * Awards a win. `bigWin`: won a finished duel by 4 points or more.
    * Returns the cash granted.
    */
-  recordWin(session, { flawless = false } = {}, now) {
+  recordWin(session, { bigWin = false } = {}, now) {
     const p = session.profile
     const has = (pass) => p.passes.includes(pass)
     const cash = DATA.winReward * (profiles.isWeekend(now) ? 2 : 1) * (has('cash2x') ? 2 : 1)
@@ -217,7 +217,7 @@ class GameRoom extends Room {
     p.bestStreak = Math.max(p.bestStreak, p.streak)
     profiles.addQuestEvent(p, 'play', 1, now)
     profiles.addQuestEvent(p, 'win', 1, now)
-    if (flawless) profiles.addQuestEvent(p, 'flawless', 1, now)
+    if (bigWin) profiles.addQuestEvent(p, 'bigwin', 1, now)
     if (p.streak >= 3) profiles.addQuestEvent(p, 'streak3', 1, now)
 
     // Win-streak milestones pay a bonus, announced to the whole server.
@@ -257,11 +257,11 @@ class GameRoom extends Room {
    * A lost duel still pays a little (and XP), so every game moves you forward.
    * Quitting or timing out pays nothing. Returns the cash given.
    */
-  recordLoss(session, now, reason = 'timer') {
+  recordLoss(session, now, reason = 'cards') {
     const p = session.profile
     p.streak = 0
     profiles.addQuestEvent(p, 'play', 1, now)
-    const finished = reason === 'timer'
+    const finished = reason === 'cards'
     const cash = finished ? DATA.lossReward * (profiles.isWeekend(now) ? 2 : 1) : 0
     p.cash += cash
     profiles.markDirty(p)

@@ -1,5 +1,5 @@
 {
-  "title": "Blind Stop",
+  "title": "Cards Matching",
   "bloxity": {
     "gameSlug": "slap-chips",
     "roomName": "game",
@@ -39,40 +39,70 @@
     ]
   },
   "roomSize": 20,
-  "timer": {
-    "winsNeeded": 2,
-    "maxRounds": 5,
-    "rounds": [
-      {
-        "min": 5,
-        "max": 9,
-        "show": 3
-      },
-      {
-        "min": 6,
-        "max": 12,
-        "show": 2
-      },
-      {
-        "min": 8,
-        "max": 15,
-        "show": 1
-      }
+  "cards": {
+    "cols": 5,
+    "rows": 4,
+    "faces": [
+      "🦁",
+      "🐼",
+      "🐸",
+      "🦊",
+      "🐙",
+      "🦄",
+      "🐧",
+      "🐨",
+      "🐯",
+      "🐵",
+      "🦉",
+      "🐳",
+      "🦋"
     ],
-    "overSec": 5,
-    "lagMs": 300,
-    "bullseyeMs": 50,
-    "bullseyeCash": 50,
-    "closeMs": 250
+    "golden": "⭐",
+    "goldenPoints": 2,
+    "turnSec": 15,
+    "dealSec": 2.2,
+    "matchMs": 900,
+    "missMs": 1400,
+    "peekMs": 1600,
+    "hintMs": 1300,
+    "afkTurns": 2
   },
+  "powers": [
+    {
+      "id": "peek",
+      "name": "PEEK",
+      "icon": "👁️",
+      "desc": "See one hidden card",
+      "color": "#b46bff"
+    },
+    {
+      "id": "hint",
+      "name": "HINT",
+      "icon": "💡",
+      "desc": "Flash a matching pair",
+      "color": "#ffc23d"
+    },
+    {
+      "id": "shuffle",
+      "name": "SHUFFLE",
+      "icon": "🔀",
+      "desc": "Mix up every hidden card",
+      "color": "#3dd6ff"
+    },
+    {
+      "id": "freeze",
+      "name": "FREEZE",
+      "icon": "❄️",
+      "desc": "Skip their next turn",
+      "color": "#7fd8ff"
+    }
+  ],
   "forfeit": {
     "penalty": 50
   },
   "winReward": 200,
   "timing": {
     "countdown": 3,
-    "target": 3,
-    "reveal": 4,
     "results": 5,
     "loserRespawn": 3.4
   },
@@ -85,11 +115,11 @@
     ]
   },
   "table": {
-    "width": 1.5,
-    "depth": 1.9,
+    "width": 2.7,
+    "depth": 2.25,
     "height": 0.82,
-    "seatZ": 1.3,
-    "sitRange": 3.6
+    "seatZ": 1.5,
+    "sitRange": 3.8
   },
   "tables": [
     {
@@ -420,8 +450,8 @@
   "emotes": [
     {
       "id": "yum",
-      "label": "TICK TOCK",
-      "icon": "⏰",
+      "label": "MY TURN",
+      "icon": "🃏",
       "price": 0
     },
     {
@@ -594,11 +624,32 @@
       "reward": 1200
     },
     {
-      "id": "flawless",
-      "label": "Win A Duel 2 - 0",
-      "event": "flawless",
-      "goal": 1,
+      "id": "pairs15",
+      "label": "Find 15 Pairs",
+      "event": "pair",
+      "goal": 15,
+      "reward": 600
+    },
+    {
+      "id": "golden2",
+      "label": "Find 2 Golden Pairs ⭐",
+      "event": "golden",
+      "goal": 2,
       "reward": 800
+    },
+    {
+      "id": "combo3",
+      "label": "Find 3 Pairs In One Turn",
+      "event": "combo3",
+      "goal": 1,
+      "reward": 1000
+    },
+    {
+      "id": "bigwin",
+      "label": "Win A Duel By 4 Or More",
+      "event": "bigwin",
+      "goal": 1,
+      "reward": 900
     },
     {
       "id": "streak3",
@@ -608,18 +659,11 @@
       "reward": 900
     },
     {
-      "id": "close5",
-      "label": "Stop Within 0.25s, 5 Times",
-      "event": "close",
+      "id": "power5",
+      "label": "Use 5 Power-Ups",
+      "event": "power",
       "goal": 5,
-      "reward": 600
-    },
-    {
-      "id": "bullseye1",
-      "label": "Hit A Bullseye (±0.05s)",
-      "event": "bullseye",
-      "goal": 1,
-      "reward": 1000
+      "reward": 400
     },
     {
       "id": "emote5",
@@ -715,25 +759,25 @@
   "titles": [
     {
       "id": "t_rookie",
-      "name": "Clock Rookie",
+      "name": "Card Rookie",
       "color": "#c8d0dc",
       "level": 5
     },
     {
       "id": "t_ninja",
-      "name": "Tick Ninja",
+      "name": "Pair Hunter",
       "color": "#5cff5c",
       "level": 10
     },
     {
       "id": "t_reader",
-      "name": "Time Reader",
+      "name": "Memory Master",
       "color": "#4fd8ff",
       "level": 20
     },
     {
       "id": "t_master",
-      "name": "Time Master",
+      "name": "Card Shark",
       "color": "#ffb21e",
       "level": 35
     },
@@ -745,35 +789,35 @@
     },
     {
       "id": "t_lucky",
-      "name": "Lucky Guess",
+      "name": "Lucky Flip",
       "color": "#7dff3a",
       "price": 500,
       "rarity": "common"
     },
     {
       "id": "t_brain",
-      "name": "Second Hand",
+      "name": "Elephant Brain",
       "color": "#ff7fc8",
       "price": 2000,
       "rarity": "uncommon"
     },
     {
       "id": "t_pro",
-      "name": "Steady Hands",
+      "name": "Photographic",
       "color": "#2f9bff",
       "price": 4000,
       "rarity": "rare"
     },
     {
       "id": "t_psychic",
-      "name": "Clock Psychic",
+      "name": "Mind Reader",
       "color": "#b44dff",
       "price": 10000,
       "rarity": "epic"
     },
     {
       "id": "t_oracle",
-      "name": "Human Stopwatch",
+      "name": "Card Wizard",
       "color": "#ffd23d",
       "price": 25000,
       "rarity": "legendary",

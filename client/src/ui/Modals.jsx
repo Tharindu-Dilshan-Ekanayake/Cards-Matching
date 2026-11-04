@@ -616,13 +616,14 @@ function QuestsModal({ profile }) {
 
 const HELP_STEPS = [
   ['🚶', 'Walk to a table', 'Use WASD (or the joystick on phones). Walk up to a table and press E (or tap "Play"). When someone sits across from you, the duel starts.'],
-  ['🎯', 'Read the target', 'Every round shows a TARGET time in seconds and milliseconds, like 07.384. Your job: stop your clock as close to it as you can.'],
-  ['👀', 'Then it goes blind', 'The clock starts at 00.000 and you can watch it for a few seconds (less every round). Then it hides and shows ??.??? — count in your head!'],
-  ['✋', 'Hit STOP', 'Press the big STOP button, SPACE, or tap your button on the table when you think the clock has reached the target.'],
-  ['🏆', 'Closest wins', `Whoever stops closer to the target wins the round. First to ${DATA.timer.winsNeeded} rounds wins the duel and $${DATA.winReward}; even if you lose, you get $${DATA.lossReward} and XP for playing.`],
+  ['🃏', 'Flip two cards', `The cards are dealt face down. On your turn, click or tap two cards to flip them. You have ${DATA.cards.turnSec} seconds per turn, and both players see every card you flip.`],
+  ['✅', 'Match a pair', 'If the two cards match, they are yours: +1 point, and you go again! If they don\'t, they turn back over and it is your opponent\'s turn.'],
+  ['⭐', 'The golden pair', `One pair is golden and worth ${DATA.cards.goldenPoints} points. Find it!`],
+  ['🧠', 'Remember everything', 'Watch your opponent\'s flips too: every card you have seen is a pair waiting to happen.'],
+  ['⚡', 'Power-ups', 'Each duel you can use each power-up once, on your turn: 👁️ PEEK (see one hidden card), 💡 HINT (flash a matching pair), 🔀 SHUFFLE (mix up every hidden card) and ❄️ FREEZE (skip their next turn). Keys 1-4 on a keyboard.'],
+  ['🏆', 'Most points wins', `The duel ends as soon as nobody can catch up. The winner gets $${DATA.winReward}; even if you lose, you get $${DATA.lossReward} and XP for playing.`],
   ['🚀', 'Losers get ejected!', 'Lose the duel and your chair launches you out of your seat, while the winner dances on the table.'],
-  ['🎯', 'Bullseye bonus', `Stop within ±${(DATA.timer.bullseyeMs / 1000).toFixed(2)}s of the target for a $${DATA.timer.bullseyeCash} bonus.`],
-  ['🏃', 'No quitting!', `Quit a duel and it counts as a loss: you pay $${DATA.forfeit.penalty} to your opponent.`],
+  ['🏃', 'No quitting!', `Quit a duel and it counts as a loss: you pay $${DATA.forfeit.penalty} to your opponent. Let two turns run out and you lose too.`],
   ['🪑', 'Collect chairs', 'Walk up to the chairs in the showroom to buy them, or open the 🛒 STORE for many more: Wood, Silver, Gold, Platinum, Snow, Gems, Neon and royal Thrones!'],
   ['⭐', 'Level up', 'Every duel gives XP. Each new level pays cash, and some unlock cool titles for your name.'],
   ['📜', 'Quests & gifts', 'Finish 3 daily quests, open a free gift every 10 minutes, and claim your daily reward.'],
@@ -632,7 +633,7 @@ const HELP_STEPS = [
 /** "How to play" in plain English. Opens by itself on a player's first visit. */
 function HelpModal() {
   return (
-    <Frame title="How to Play ⏱️">
+    <Frame title="How to Play 🃏">
       {HELP_STEPS.map(([icon, title, text], i) => (
         <div key={title} className="flex items-start gap-3 rounded-xl border-[3px] border-black/50 bg-[#123540] px-3 py-2">
           <span className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-white/10 text-[1.8rem]">{icon}</span>
